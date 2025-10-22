@@ -72,7 +72,7 @@
 <!-- PANNELLO ADMIN SEPARATO -->
 <div id="admin-panel" class="hidden bg-gray-100 p-6 rounded-xl shadow-lg border border-gray-300 max-w-[480px] w-[95%]">
     <h3 class="text-xl font-bold text-red-700 mb-4 border-b pb-2">Pannello di Controllo Admin Separato</h3>
-    <p class="text-sm text-gray-700 mb-4">L'ID Utente di chi ha effettuato l'accesso è il seguente: <span id="admin-user-id" class="font-mono text-xs bg-yellow-200 p-1 rounded"></span>. Usare questo link per la gestione.</p>
+    <p class="text-sm text-gray-700 mb-4">ID Admin: <span id="admin-user-id" class="font-mono text-xs bg-yellow-200 p-1 rounded"></span>. Usare questo link per la gestione.</p>
     
     <!-- SEZIONE GESTIONE CODICE -->
     <h4 class="text-lg font-bold text-gray-800 mt-4 border-t pt-4">1. Gestione Codice Accesso</h4>
@@ -107,60 +107,23 @@
     </div>
 </div>
 
-<!-- Script Firebase e Logica Applicativa -->
-<script type="module">
-    // Importazioni Firebase
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, addDoc, serverTimestamp, getDocs, deleteDoc, writeBatch, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-    import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+<!-- Script Logica Applicativa (NON USA FIREBASE) -->
+<script>
+    // URL della Web App Google Sheets che gestisce le richieste.
+    // DEVE essere aggiornato dopo ogni pubblicazione dello script GAS.
+    // === ATTENZIONE: INCOLLA IL TUO LINK ESATTO QUI SOTTO PER RISOLVERE L'ERRORE ===
+    const SHEET_WEB_APP_URL = 'YOUR_GAS_WEB_APP_URL'; 
 
-    // Setta il livello di log per il debugging
-    setLogLevel('Debug');
-    
-    // =====================================================================
-    // CONFIGURAZIONE FIREBASE PER HOSTING ESTERNO (CRITICO!)
-    // DEVI INSERIRE QUI I DETTAGLI DI CONFIGURAZIONE DEL TUO PROGETTO FIREBASE.
-    // SOSTITUISCI TUTTI I TESTI IN MAIUSCOLO CON I TUOI VALORI REALI.
-    // =====================================================================
-
-    const EXTERNAL_FIREBASE_CONFIG = {
-        apiKey: "AIzaSyAYqT8p5ITdUKvyXKb4piEBTRjIUCg40t0",
-        authDomain: "votazione-collegio-docenti.firebaseapp.com",
-        projectId: "votazione-collegio-docenti",
-        storageBucket: "votazione-collegio-docenti.firebasestorage.app",
-        messagingSenderId: "967337243789",
-        appId: "1:967337243789:web:fdaabd894d7abc45bf1ec4",
-	measurementId: "G-ZJT5BPFS2N"
-    };
-
-    // Variabili Globali (Ora utilizzano il fallback esterno)
-    
-    // Variabile 1: ID Applicazione (Usata per isolare i dati in Firestore)
-    // Se l'app è ospitata esternamente (non nel Canvas), usa un ID fisso e unico (es. 'collegio-docenti-ufficiale').
-    const EXTERNAL_APP_ID = 'collegio-docenti-ufficiale';
-    const appId = typeof __app_id !== 'undefined' ? __app_id : EXTERNAL_APP_ID;
-
-    // Variabile 2: Configurazione del Progetto Firebase
-    const firebaseConfig = typeof __firebase_config !== 'undefined' 
-        ? JSON.parse(__firebase_config) 
-        : EXTERNAL_FIREBASE_CONFIG; 
-        
-    // Variabile 3: Token di Autenticazione (Non necessario per hosting esterno)
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    
     // Stato dell'Applicazione
-    let app, db, auth;
     let userId = null;
-    let isAuthReady = false;
     let isRegistered = false;
     let isVotingActive = false;
     let hasVotedInCurrentRound = false;
     let votingResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
     let requiredCode = null; 
-    let adminUserId = null; 
     let isViewingLog = false; 
     let isAdminRole = false; 
+    let lastResetTimestamp = 0; // Utilizzato per il check del voto
 
     // Elementi UI
     const mainContentEl = document.getElementById('main-content');
@@ -177,13 +140,19 @@
 
     // --- FUNZIONI DI UTILITÀ ---
 
-    // Percorsi Firestore
-    const getRegistrationDocPath = (uid) => `artifacts/${appId}/users/${uid}/registrations/${uid}`;
-    const getVotesCollectionPath = () => `artifacts/${appId}/public/data/votes`;
-    const getSettingsDocPath = () => `artifacts/${appId}/public/data/settings/voting_status`;
-    const getAttendeesCollectionPath = () => `artifacts/${appId}/public/data/attendees`; 
-    const getDeliberationsCollectionPath = () => `artifacts/${appId}/public/data/deliberations_log`; 
-    
+    // Funzione per generare un ID Utente casuale e persistente (sostituisce l'auth di Firebase)
+    function getUserId() {
+        let uid = localStorage.getItem('votingAppUserId');
+        if (!uid) {
+            // Genera un UUID v4
+            uid = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+            );
+            localStorage.setItem('votingAppUserId', uid);
+        }
+        return uid;
+    }
+
     // Funzione per controllare i parametri nell'URL
     function getUrlParameter(name) {
         name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
@@ -192,10 +161,10 @@
         return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
     }
 
-    // Formatta il timestamp in una stringa leggibile
-    function formatTimestamp(timestamp) {
-        if (!timestamp) return 'N/A';
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    // Formatta il timestamp
+    function formatTimestamp(timestampStr) {
+        if (!timestampStr) return 'N/A';
+        const date = new Date(timestampStr);
         return date.toLocaleDateString('it-IT', {
             year: 'numeric', month: '2-digit', day: '2-digit', 
             hour: '2-digit', minute: '2-digit', second: '2-digit'
@@ -215,144 +184,154 @@
             messageEl.addEventListener('transitionend', () => messageEl.remove());
         }, 3000);
     }
+    
+    // Funzione per inviare richieste al Google Apps Script (GAS)
+    async function fetchFromGAS(action, params = {}) {
+        if (SHEET_WEB_APP_URL === 'YOUR_GAS_WEB_APP_URL') {
+            throw new Error("API URL non configurato. Incolla il link della Web App di Google Sheets nel codice.");
+        }
+        
+        const url = new URL(SHEET_WEB_APP_URL);
+        url.searchParams.append('action', action);
+        url.searchParams.append('userId', userId);
+        
+        for (const key in params) {
+            url.searchParams.append(key, params[key]);
+        }
+
+        try {
+            const response = await fetch(url.toString(), {
+                method: 'GET', // Usiamo GET per semplicità, gestito da doGet in GAS
+            });
+
+            if (!response.ok) {
+                throw new Error(`Errore HTTP: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.status === 'error') {
+                throw new Error(result.message);
+            }
+            return result;
+        } catch (error) {
+            console.error(`Errore nell'azione ${action}:`, error.message);
+            throw new Error(`Connessione fallita. Controlla lo script GAS.`);
+        }
+    }
+
 
     // --- FUNZIONI DI INIZIALIZZAZIONE ---
 
-    async function initFirebase() {
-        // NUOVO CONTROLLO CRITICO: Verifica se l'utente ha sostituito i placeholder
-        if (firebaseConfig.apiKey.startsWith("SOSTITUISCI-CON-LA-TUA")) {
-             mainContentEl.innerHTML = `
-                <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE CRITICO: CONFIGURAZIONE MANCANTE</h2>
-                <p class="text-gray-700 mb-4">Sembra che tu non abbia ancora inserito le tue credenziali Firebase reali nel codice sorgente.</p>
-                <p class="text-sm text-gray-600 mb-4">Devi sostituire i testi come <span class="font-mono text-xs bg-gray-200 p-1 rounded">SOSTITUISCI-CON-LA-TUA-API-KEY-REALE</span> all'interno della sezione <span class="font-mono text-xs bg-gray-200 p-1 rounded">EXTERNAL_FIREBASE_CONFIG</span> nel file index.html.</p>
-                <p class="text-sm font-bold text-blue-600">Riprova il passaggio di copia/incolla della tua configurazione personale Firebase.</p>
-            `;
-            console.error("ERRORE: Credenziali Firebase mancanti o errate (placeholder ancora presente).");
-            return;
+    function initApp() {
+        userId = getUserId();
+        isAdminRole = getUrlParameter('role') === 'admin';
+        
+        // Nel modello Sheets, l'AdminUserId è l'ID del client che ha caricato la pagina admin
+        // Se non è l'admin, adminUserId rimane null, ma l'ID dell'utente è visibile
+        const adminIdDisplay = userId.substring(0, 10) + '...';
+        adminUserIdEl.textContent = adminIdDisplay;
+
+        if (isAdminRole) {
+            adminPanelEl.classList.remove('hidden');
+        }
+        
+        // Inizializza i listener per i pulsanti Admin
+        if (adminPanelEl) { 
+            toggleVotingBtn.addEventListener('click', handleAdminToggle);
+            resetResultsBtn.addEventListener('click', handleResetResults);
+            updateCodeBtn.addEventListener('click', handleAdminCodeUpdate); 
+            showAttendeesBtn.addEventListener('click', showAttendeesList); 
+            showDeliberationsBtn.addEventListener('click', showDeliberationsLog); 
         }
 
-
-        try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-
-            // 1. Autenticazione
-            if (initialAuthToken) {
-                await signInWithCustomToken(auth, initialAuthToken);
-            } else {
-                await signInAnonymously(auth);
-            }
-
-            // 2. Listener per lo stato di autenticazione
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    isAuthReady = true;
-                    
-                    // Controlla se il ruolo Admin è forzato dall'URL
-                    isAdminRole = getUrlParameter('role') === 'admin';
-
-                    // L'adminUserId è l'utente attuale se il ruolo è forzato, altrimenti il primo che carica
-                    if (isAdminRole) {
-                        adminUserId = userId;
-                    } else if (!adminUserId) {
-                        // Logica fallback: se non c'è un admin forzato, il primo utente è l'admin
-                        adminUserId = userId; 
-                    }
-
-                    if (userId === adminUserId && isAdminRole) {
-                        adminPanelEl.classList.remove('hidden');
-                        adminUserIdEl.textContent = adminUserId;
-                    } else if (!isAdminRole && userId === adminUserId) {
-                        // Se l'utente è l'admin ma non ha il link ?role=admin, non mostriamo il pannello
-                        adminUserIdEl.textContent = 'Non attivo (usa link Admin)';
-                    }
-                    
-                    startStateListeners();
-                    await checkRegistrationStatus();
-                    renderApp();
-
-                } else {
-                    isAuthReady = false;
-                    mainContentEl.innerHTML = '<h2 class="text-xl font-bold text-center text-red-500">Errore di Autenticazione</h2><p class="text-center text-gray-600 mt-2">Impossibile accedere al sistema. Riprova.</p>';
-                }
-            });
-        } catch (error) {
-            console.error("Errore nell'inizializzazione di Firebase:", error);
-            // Messaggio di errore fallback
-            showMessage("Errore critico di sistema nell'inizializzazione. Controlla i valori Firebase.", true);
-        }
+        // Avvia il loop di polling (simulazione del listener in tempo reale)
+        startPollingLoop();
     }
     
-    async function checkRegistrationStatus() {
-        if (!userId) return;
-        const regRef = doc(db, getRegistrationDocPath(userId));
-        const regSnap = await getDoc(regRef);
-
-        if (regSnap.exists()) {
-            isRegistered = true;
-        } else {
-            isRegistered = false;
-        }
+    // Simula i listener in tempo reale (polling)
+    function startPollingLoop() {
+        setInterval(async () => {
+            if (isViewingLog) return; // Non aggiornare se stiamo visualizzando i log
+            
+            try {
+                const statusData = await fetchFromGAS('get_status');
+                
+                isVotingActive = statusData.isVotingActive;
+                requiredCode = statusData.requiredCode;
+                votingResults = statusData.results;
+                
+                // Aggiorna lo stato nel pannello Admin
+                if (isAdminRole) {
+                    votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
+                    votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
+                    toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
+                    toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
+                    
+                    currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
+                }
+                
+                // Aggiorna lo stato di voto per l'utente corrente
+                await checkUserVotedStatus();
+                
+                renderApp();
+            } catch (e) {
+                console.error("Errore nel polling:", e);
+                if (mainContentEl.innerHTML.indexOf('ERRORE CRITICO') === -1) {
+                     mainContentEl.innerHTML = `
+                        <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE CRITICO DI CONNESSIONE</h2>
+                        <p class="text-gray-700 mb-4">L'app non riesce a comunicare con Google Sheets.</p>
+                        <p class="text-sm text-gray-600 mb-4">Verifica che l'URL nella variabile <span class="font-mono text-xs bg-gray-200 p-1 rounded">SHEET_WEB_APP_URL</span> sia corretto e che lo script GAS sia stato pubblicato come "Web app" accessibile a "Chiunque".</p>
+                    `;
+                }
+            }
+        }, 1500); // Polling ogni 1.5 secondi
     }
 
-    // --- LISTENER FIREBASE IN TEMPO REALE ---
+    async function checkUserVotedStatus() {
+        // Poiché non possiamo fare query complesse su Sheets direttamente,
+        // ci affidiamo all'HTML per verificare se l'utente ha votato
+        // dopo l'ultimo reset.
+        
+        // Questo è solo un controllo LOCAL storage basato sull'ultimo voto
+        // e non è infallibile, ma è la soluzione più semplice con Sheets.
+        
+        const userLastVote = localStorage.getItem('lastVoteTimestamp');
+        const userHasVoted = localStorage.getItem(`hasVoted_${userId}`);
 
-    function startStateListeners() {
-        if (!isAuthReady) return;
+        // Controlla se il voto è stato espresso dopo l'ultima ora di reset
+        if (userHasVoted === 'true' && userLastVote && lastResetTimestamp && userLastVote < lastResetTimestamp) {
+             // Il voto è vecchio, lo resetta
+             localStorage.removeItem(`hasVoted_${userId}`);
+             localStorage.removeItem('lastVoteTimestamp');
+             hasVotedInCurrentRound = false;
+        } else if (userHasVoted === 'true') {
+            hasVotedInCurrentRound = true;
+        } else {
+            hasVotedInCurrentRound = false;
+        }
+        
+        // Controllo aggiuntivo: cerca l'utente nel foglio Voti
+        // Questa è la verifica più robusta (da implementare in un sistema più complesso)
 
-        // Listener 1: Stato di Votazione e Codice (Attiva/Disattiva/Reset Signal)
-        onSnapshot(doc(db, getSettingsDocPath()), (docSnap) => {
-            const data = docSnap.data();
+    }
+    
+    // Simula la funzione checkRegistrationStatus di Firebase
+    async function checkRegistrationStatus() {
+        if (isRegistered) return;
+        
+        try {
+            const attendeesData = await fetchFromGAS('get_attendees');
             
-            isVotingActive = data ? data.isActive : false;
-            requiredCode = data ? (data.requiredCode || null) : null; 
-
-            // Aggiorna lo stato nel pannello Admin SOLO se l'utente ha il ruolo Admin forzato
-            if (isAdminRole) {
-                votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
-                votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
-                toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
-                toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
-                
-                currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
+            if (attendeesData.data) {
+                // Il terzo elemento nell'array del log è l'userId
+                const found = attendeesData.data.some(row => row[1] === userId); 
+                isRegistered = found;
             }
             
-            // Re-render (solo se non stiamo visualizzando i log)
-            if (!isViewingLog) renderApp();
-        }, (error) => {
-            console.error("Errore nel listener dello stato di votazione:", error);
-        });
-
-        // Listener 2: Risultati di Votazione (Conteggio in tempo reale)
-        const votesRef = collection(db, getVotesCollectionPath());
-        const q = query(votesRef);
-
-        onSnapshot(q, (snapshot) => {
-            const newResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
-            hasVotedInCurrentRound = false; 
-
-            snapshot.forEach((doc) => {
-                const voteData = doc.data();
-                const choice = voteData.vote;
-
-                if (newResults.hasOwnProperty(choice)) {
-                    newResults[choice]++;
-                }
-                
-                if (voteData.userId === userId) {
-                    hasVotedInCurrentRound = true;
-                }
-            });
-
-            votingResults = newResults;
-            
-            if(isRegistered && !isViewingLog) renderApp();
-
-        }, (error) => {
-            console.error("Errore nel listener dei risultati di votazione:", error);
-        });
+        } catch (e) {
+            console.error("Errore nel check registrazione:", e);
+        }
     }
 
 
@@ -364,7 +343,7 @@
         const codice = document.getElementById('codice').value.trim();
 
         if (!nome || !cognome || !codice) {
-            showMessage("Per favor, compila tutti i campi.", true);
+            showMessage("Per favore, compila tutti i campi.", true);
             return;
         }
 
@@ -378,31 +357,24 @@
             return;
         }
         
-        const regRef = doc(db, getRegistrationDocPath(userId));
-        const attendeesRef = collection(db, getAttendeesCollectionPath()); 
-
         try {
-            await setDoc(regRef, {
+            const result = await fetchFromGAS('register', {
                 nome: nome,
                 cognome: cognome,
-                codice: codice, 
-                timestamp: serverTimestamp(),
-                userId: userId
+                codice: codice
             });
             
-            // Salva anche nel log presenze pubblico
-            await setDoc(doc(attendeesRef, userId), { 
-                nome: nome,
-                cognome: cognome,
-                timestamp: serverTimestamp(),
-                userId: userId
-            });
-
             isRegistered = true;
             showMessage(`Registrazione di ${nome} ${cognome} completata! Benvenuto/a.`);
             renderApp();
             
         } catch (e) {
+            if (e.message.includes('Già registrato')) {
+                isRegistered = true;
+                showMessage("Sei già stato registrato. Passaggio alla votazione.");
+                renderApp();
+                return;
+            }
             console.error("Errore durante la registrazione: ", e);
             showMessage("Errore nel salvataggio della registrazione. Riprova.", true);
         }
@@ -419,17 +391,25 @@
         }
 
         try {
-            const votesRef = collection(db, getVotesCollectionPath());
-            
-            await addDoc(votesRef, {
-                userId: userId,
+            const result = await fetchFromGAS('vote', {
                 vote: choice,
-                timestamp: serverTimestamp()
             });
 
+            // Stato locale aggiornato per prevenire il doppio voto immediato
+            localStorage.setItem(`hasVoted_${userId}`, 'true');
+            localStorage.setItem('lastVoteTimestamp', new Date().getTime());
+            hasVotedInCurrentRound = true;
+            
             showMessage(`Voto espresso: ${choice}. Grazie!`);
             
         } catch (e) {
+            if (e.message.includes('Hai già votato')) {
+                localStorage.setItem(`hasVoted_${userId}`, 'true');
+                hasVotedInCurrentRound = true;
+                showMessage("Hai già votato per questa mozione.", true);
+                renderApp();
+                return;
+            }
             console.error("Errore durante la votazione: ", e);
             showMessage("Errore durante l'invio del voto. Riprova.", true);
         }
@@ -446,11 +426,11 @@
             return;
         }
 
-        const settingsRef = doc(db, getSettingsDocPath());
-        
         try {
-            await setDoc(settingsRef, { requiredCode: newCode }, { merge: true });
-            showMessage(`Nuovo codice impostato: ${newCode}.`);
+            const result = await fetchFromGAS('update_code', {
+                newCode: newCode
+            });
+            showMessage(result.message); // Messaggio da GAS: "Codice impostato a X"
         } catch (e) {
             console.error("Errore nell'aggiornamento del codice Admin: ", e);
             showMessage("Errore nel salvataggio del codice.", true);
@@ -460,12 +440,9 @@
     async function handleAdminToggle() {
         if (!isAdminRole) return; 
         
-        const settingsRef = doc(db, getSettingsDocPath());
-        const newState = !isVotingActive;
-        
         try {
-            await setDoc(settingsRef, { isActive: newState, lastToggle: serverTimestamp() }, { merge: true });
-            showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`);
+            const result = await fetchFromGAS('toggle_vote');
+            showMessage(`Votazione ${result.isVotingActive ? 'ATTIVATA' : 'DISATTIVATA'}.`);
         } catch (e) {
             console.error("Errore nel toggle Admin: ", e);
             showMessage("Errore nel cambio stato votazione.", true);
@@ -475,46 +452,17 @@
     async function handleResetResults() {
         if (!isAdminRole) return; 
 
-        console.warn("Attenzione: Inizializzazione reset voti. Questa azione è irreversibile.");
-        
         try {
-            // FASE 0: Calcola il totale dei presenti prima del log
-            const attendeesRef = collection(db, getAttendeesCollectionPath());
-            const attendeesSnap = await getDocs(attendeesRef);
-            const totalAttendees = attendeesSnap.size;
-
-            // FASE 1: Salva il Log Storico se ci sono stati voti
-            const totalVotes = votingResults.Favorevole + votingResults.Contrario + votingResults.Astenuto;
-
-            if (totalVotes > 0) {
-                const logRef = collection(db, getDeliberationsCollectionPath());
-                await addDoc(logRef, {
-                    results: votingResults,
-                    totalVotes: totalVotes,
-                    totalAttendees: totalAttendees, 
-                    timestamp: serverTimestamp()
-                });
-                showMessage("Log storico della votazione salvato con successo.");
-            } else {
-                 showMessage("Nessun voto registrato. Log storico non salvato.", true);
-            }
-
-            // FASE 2: Cancellazione dei voti attuali
-            const votesRef = collection(db, getVotesCollectionPath());
-            const q = query(votesRef);
-            const snapshot = await getDocs(q);
+            const result = await fetchFromGAS('reset_results');
             
-            const batch = writeBatch(db);
-            snapshot.docs.forEach((d) => {
-                batch.delete(d.ref);
-            });
-            await batch.commit();
-
-            // FASE 3: Forzare la sincronizzazione di tutti i client
-            const settingsRef = doc(db, getSettingsDocPath());
-            await setDoc(settingsRef, { lastReset: serverTimestamp() }, { merge: true });
+            // Aggiorna il timestamp di reset locale
+            lastResetTimestamp = new Date().getTime();
+            localStorage.setItem('lastResetTimestamp', lastResetTimestamp);
             
-            showMessage("Tutti i risultati di votazione sono stati resettati con successo. I docenti possono ora votare di nuovo (se la votazione è attiva).");
+            // Rimuove lo stato di voto locale per tutti gli utenti
+            localStorage.removeItem(`hasVoted_${userId}`);
+            
+            showMessage(result.message); // Messaggio da GAS: "Voti e Presenze resettati. Log salvato."
             
         } catch (e) {
             console.error("Errore nel reset dei voti: ", e);
@@ -530,26 +478,24 @@
         mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento lista presenti...</p>';
 
         try {
-            const attendeesRef = collection(db, getAttendeesCollectionPath());
-            const q = query(attendeesRef, orderBy('timestamp', 'desc')); 
-            const snapshot = await getDocs(q);
+            const attendeesData = await fetchFromGAS('get_attendees');
+            const data = attendeesData.data || [];
             
-            let listHtml = snapshot.empty 
+            let listHtml = data.length === 0 
                 ? '<p class="text-center text-gray-500 p-4">Nessun docente registrato finora.</p>'
                 : `<ul class="log-list divide-y divide-gray-200">
-                    ${snapshot.docs.map(doc => {
-                        const data = doc.data();
+                    ${data.reverse().map(row => { // Reverse per mostrare i più recenti in alto
                         return `
                             <li class="p-3 flex justify-between items-center text-sm">
-                                <span class="font-semibold text-gray-900">${data.cognome} ${data.nome}</span>
-                                <span class="text-gray-500 text-xs">${formatTimestamp(data.timestamp)}</span>
+                                <span class="font-semibold text-gray-900">${row[3]} ${row[2]}</span>
+                                <span class="text-gray-500 text-xs">${formatTimestamp(row[0])}</span>
                             </li>
                         `;
                     }).join('')}
                 </ul>`;
 
             mainContentEl.innerHTML = `
-                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Lista Docenti Presenti (${snapshot.size})</h2>
+                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Lista Docenti Presenti (${data.length})</h2>
                 ${listHtml}
                 <button id="back-to-vote-btn" class="w-full mt-4 py-2 px-4 rounded-xl text-white font-semibold bg-blue-500 hover:bg-blue-600">
                     Torna alla Votazione
@@ -572,24 +518,23 @@
         mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico delle delibere...</p>';
         
         try {
-            const logRef = collection(db, getDeliberationsCollectionPath());
-            const q = query(logRef, orderBy('timestamp', 'desc')); 
-            const snapshot = await getDocs(q);
+            const logData = await fetchFromGAS('get_log');
+            const data = logData.data || [];
             
-            let logHtml = snapshot.empty 
+            let logHtml = data.length === 0
                 ? '<p class="text-center text-gray-500 p-4">Nessuna votazione storica salvata finora.</p>'
                 : `<div class="log-list space-y-4">
-                    ${snapshot.docs.map((doc, index) => {
-                        const data = doc.data();
-                        const results = data.results;
+                    ${data.reverse().map((row, index) => { // Reverse per mostrare i più recenti in alto
+                        // Colonna: [0]timestamp, [1]attendees, [2]favorevole, [3]contrario, [4]astenuto
+                        const totalVoti = row[2] + row[3] + row[4];
                         return `
                             <div class="p-3 border rounded-lg shadow-sm bg-white">
-                                <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${snapshot.size - index} - Voti: ${data.totalVotes} / Presenti: ${data.totalAttendees || 'N/A'}</p>
-                                <p class="text-xs text-gray-500 mb-2">${formatTimestamp(data.timestamp)}</p>
+                                <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${data.length - index} - Voti: ${totalVoti} / Presenti: ${row[1] || 'N/A'}</p>
+                                <p class="text-xs text-gray-500 mb-2">${formatTimestamp(row[0])}</p>
                                 <div class="grid grid-cols-3 gap-1 text-xs font-semibold">
-                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${results.Favorevole}</span>
-                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${results.Contrario}</span>
-                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${results.Astenuto}</span>
+                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${row[2]}</span>
+                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${row[3]}</span>
+                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${row[4]}</span>
                                 </div>
                             </div>
                         `;
@@ -597,7 +542,7 @@
                 </div>`;
 
             mainContentEl.innerHTML = `
-                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Log Storico Votazioni (${snapshot.size})</h2>
+                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Log Storico Votazioni (${data.length})</h2>
                 ${logHtml}
                 <button id="back-to-vote-btn" class="w-full mt-4 py-2 px-4 rounded-xl text-white font-semibold bg-blue-500 hover:bg-blue-600">
                     Torna alla Votazione
@@ -614,24 +559,15 @@
         }
     }
 
-    // Aggiungi listener per i pulsanti Admin
-    if (adminPanelEl) { // Controlla se il pannello esiste prima di attaccare i listener
-        toggleVotingBtn.addEventListener('click', handleAdminToggle);
-        resetResultsBtn.addEventListener('click', handleResetResults);
-        updateCodeBtn.addEventListener('click', handleAdminCodeUpdate); 
-        showAttendeesBtn.addEventListener('click', showAttendeesList); 
-        showDeliberationsBtn.addEventListener('click', showDeliberationsLog); 
-    }
-
-
     // --- FUNZIONE DI RENDERING (Mostra la pagina corretta) ---
     
     function renderApp() {
-        if (!isAuthReady || isViewingLog) return; 
+        if (isViewingLog) return; 
         
         mainContentEl.innerHTML = ''; 
 
         if (!isRegistered) {
+            checkRegistrationStatus(); // Riprova il check ad ogni render
             renderRegistrationPage(); 
         } else {
             renderVotingPage(); 
@@ -639,7 +575,6 @@
     }
 
     function renderRegistrationPage() {
-        // ... (Logica di rendering Pagina Registrazione)
         const codeStatus = requiredCode 
             ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO. Inserisci il codice comunicato.</p>'
             : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice di accesso NON ancora impostato dall\'amministratore.</p>';
@@ -651,18 +586,21 @@
             <div class="p-3 mb-4 rounded-xl bg-gray-50 border border-gray-200">
                 <p class="text-sm text-gray-600 text-center">ID Utente: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || 'Caricamento...'}</span></p>
             </div>
-            ${codeStatus}
+            ${isRegistered ? 
+                '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata. Vai al voto!</p>'
+                : codeStatus
+            }
             <div class="space-y-4">
-                <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" />
-                <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" />
-                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" />
+                <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" ${isRegistered ? 'disabled' : ''}/>
+                <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" ${isRegistered ? 'disabled' : ''}/>
+                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" ${isRegistered ? 'disabled' : ''}/>
                 
-                <button id="register-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg">
+                <button id="register-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg ${isRegistered ? 'opacity-50 cursor-not-allowed' : ''}" ${isRegistered ? 'disabled' : ''}>
                     Registra Presenza
                 </button>
             </div>
         `;
-        document.getElementById('register-btn').addEventListener('click', handleRegistration);
+        document.getElementById('register-btn')?.addEventListener('click', handleRegistration);
     }
 
     function renderVotingPage() {
@@ -721,7 +659,7 @@
     }
 
     // Avvia l'app
-    initFirebase();
+    window.onload = initApp;
 </script>
 
 </body>
