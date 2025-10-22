@@ -1,0 +1,688 @@
+
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Votazione Collegio Docenti</title>
+    <!-- Caricamento di Tailwind CSS per lo styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Stile personalizzato per il corpo e i pulsanti */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            min-height: 100vh;
+            /* Modificato per impilare verticalmente e mantenere il centraggio */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+        }
+        .container-card {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-width: 480px;
+            width: 95%;
+            margin-bottom: 1.5rem; /* Aggiunto margine inferiore per separazione */
+        }
+        .vote-btn {
+            transition: all 0.2s;
+            transform: scale(1.0);
+        }
+        .vote-btn:hover:not(.opacity-50) {
+            transform: scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .vote-btn:active:not(.opacity-50) {
+            transform: scale(0.98);
+        }
+        .log-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+        }
+    </style>
+    <!-- Configurazione del Font Inter -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+
+<!-- CONTENITORE PRINCIPALE (Registrazione/Votazione/Log) -->
+<div id="app-container" class="container-card">
+    <div id="main-content">
+        <!-- Il contenuto dell'applicazione (registrazione o votazione) verrà iniettato qui -->
+        <p class="text-center text-gray-500">Caricamento in corso...</p>
+    </div>
+</div>
+
+<!-- PANNELLO ADMIN SEPARATO -->
+<div id="admin-panel" class="hidden bg-gray-100 p-6 rounded-xl shadow-lg border border-gray-300 max-w-[480px] w-[95%]">
+    <h3 class="text-xl font-bold text-red-700 mb-4 border-b pb-2">Pannello di Controllo Admin Separato</h3>
+    <p class="text-sm text-gray-700 mb-4">L'ID Utente di chi ha effettuato l'accesso è il seguente: <span id="admin-user-id" class="font-mono text-xs bg-yellow-200 p-1 rounded"></span>. Usare questo link per la gestione.</p>
+    
+    <!-- SEZIONE GESTIONE CODICE -->
+    <h4 class="text-lg font-bold text-gray-800 mt-4 border-t pt-4">1. Gestione Codice Accesso</h4>
+    <p class="text-sm text-gray-700 mb-2">Codice Corrente Richiesto: <span id="current-required-code" class="font-mono text-sm bg-blue-100 p-1 rounded font-bold">Nessuno</span></p>
+    <input type="text" id="admin-set-code" placeholder="Nuovo Codice Univoco (es. 1234)" class="w-full p-2 border border-gray-400 rounded-lg text-sm mb-2" />
+    <button id="update-code-btn" class="w-full py-2 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md">
+        Imposta Codice e Abilita Registrazione
+    </button>
+
+    <!-- SEZIONE GESTIONE VOTO -->
+    <h4 class="text-lg font-bold text-red-700 mt-6 border-t pt-4">2. Gestione Votazione</h4>
+    <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold">DISATTIVO</span>.</p>
+    
+    <div class="space-y-2 mt-4">
+        <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md">
+            Attiva Votazione
+        </button>
+        <button id="reset-results-btn" class="w-full py-2 px-4 rounded-xl text-red-700 border border-red-700 bg-white hover:bg-red-50 transition duration-150 ease-in-out font-semibold shadow-sm">
+            Resetta Tutti i Voti (Salva Log)
+        </button>
+    </div>
+
+    <!-- SEZIONE LOG E PRESENZE -->
+    <h4 class="text-lg font-bold text-gray-800 mt-6 border-t pt-4">3. Log e Tracciabilità</h4>
+    <div class="grid grid-cols-2 gap-2 mt-4">
+        <button id="show-attendees-btn" class="py-2 px-2 rounded-xl text-blue-700 border border-blue-700 bg-white hover:bg-blue-50 transition duration-150 ease-in-out font-semibold text-sm shadow-sm">
+            Mostra Lista Presenti
+        </button>
+        <button id="show-deliberations-btn" class="py-2 px-2 rounded-xl text-purple-700 border border-purple-700 bg-white hover:bg-purple-50 transition duration-150 ease-in-out font-semibold text-sm shadow-sm">
+            Mostra Log Storico
+        </button>
+    </div>
+</div>
+
+<!-- Script Firebase e Logica Applicativa -->
+<script type="module">
+    // Importazioni Firebase
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, addDoc, serverTimestamp, getDocs, deleteDoc, writeBatch, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Setta il livello di log per il debugging
+    setLogLevel('Debug');
+
+    // Variabili Globali fornite dall'ambiente Canvas
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    
+    // Stato dell'Applicazione
+    let app, db, auth;
+    let userId = null;
+    let isAuthReady = false;
+    let isRegistered = false;
+    let isVotingActive = false;
+    let hasVotedInCurrentRound = false;
+    let votingResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
+    let requiredCode = null; 
+    let adminUserId = null; 
+    let isViewingLog = false; 
+    let isAdminRole = false; // NUOVO: Flag per il ruolo Admin forzato
+
+    // Elementi UI
+    const mainContentEl = document.getElementById('main-content');
+    const adminPanelEl = document.getElementById('admin-panel');
+    const toggleVotingBtn = document.getElementById('toggle-voting-btn');
+    const resetResultsBtn = document.getElementById('reset-results-btn');
+    const updateCodeBtn = document.getElementById('update-code-btn'); 
+    const adminUserIdEl = document.getElementById('admin-user-id');
+    const votingStatusTextEl = document.getElementById('voting-status-text');
+    const currentRequiredCodeEl = document.getElementById('current-required-code'); 
+    const showAttendeesBtn = document.getElementById('show-attendees-btn'); 
+    const showDeliberationsBtn = document.getElementById('show-deliberations-btn'); 
+
+
+    // --- FUNZIONI DI UTILITÀ ---
+
+    // Percorsi Firestore
+    const getRegistrationDocPath = (uid) => `artifacts/${appId}/users/${uid}/registrations/${uid}`;
+    const getVotesCollectionPath = () => `artifacts/${appId}/public/data/votes`;
+    const getSettingsDocPath = () => `artifacts/${appId}/public/data/settings/voting_status`;
+    const getAttendeesCollectionPath = () => `artifacts/${appId}/public/data/attendees`; 
+    const getDeliberationsCollectionPath = () => `artifacts/${appId}/public/data/deliberations_log`; 
+    
+    // Funzione per controllare i parametri nell'URL
+    function getUrlParameter(name) {
+        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+        const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+        const results = regex.exec(location.search);
+        return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+    }
+
+    // Formatta il timestamp in una stringa leggibile
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return 'N/A';
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        return date.toLocaleDateString('it-IT', {
+            year: 'numeric', month: '2-digit', day: '2-digit', 
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+
+    // Mostra un messaggio all'utente invece di alert()
+    function showMessage(message, isError = false) {
+        const type = isError ? 'bg-red-500' : 'bg-green-500';
+        const messageEl = document.createElement('div');
+        messageEl.className = `fixed top-5 left-1/2 transform -translate-x-1/2 p-3 rounded-lg text-white font-semibold ${type} shadow-xl z-50 transition-opacity duration-300`;
+        messageEl.textContent = message;
+        document.body.appendChild(messageEl);
+
+        setTimeout(() => {
+            messageEl.style.opacity = '0';
+            messageEl.addEventListener('transitionend', () => messageEl.remove());
+        }, 3000);
+    }
+
+    // --- FUNZIONI DI INIZIALIZZAZIONE ---
+
+    async function initFirebase() {
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // 1. Autenticazione
+            if (initialAuthToken) {
+                await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+                await signInAnonymously(auth);
+            }
+
+            // 2. Listener per lo stato di autenticazione
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    isAuthReady = true;
+                    
+                    // NUOVO: Controlla se il ruolo Admin è forzato dall'URL
+                    isAdminRole = getUrlParameter('role') === 'admin';
+
+                    // L'adminUserId è l'utente attuale se il ruolo è forzato, altrimenti il primo che carica
+                    if (isAdminRole) {
+                        adminUserId = userId;
+                    } else if (!adminUserId) {
+                        // Logica fallback: se non c'è un admin forzato, il primo utente è l'admin
+                        adminUserId = userId; 
+                    }
+
+                    if (userId === adminUserId && isAdminRole) {
+                        adminPanelEl.classList.remove('hidden');
+                        adminUserIdEl.textContent = adminUserId;
+                    } else if (!isAdminRole && userId === adminUserId) {
+                        // Se l'utente è l'admin ma non ha il link ?role=admin, non mostriamo il pannello
+                        adminUserIdEl.textContent = 'Non attivo (usa link Admin)';
+                    }
+                    
+                    startStateListeners();
+                    await checkRegistrationStatus();
+                    renderApp();
+
+                } else {
+                    isAuthReady = false;
+                    mainContentEl.innerHTML = '<h2 class="text-xl font-bold text-center text-red-500">Errore di Autenticazione</h2><p class="text-center text-gray-600 mt-2">Impossibile accedere al sistema. Riprova.</p>';
+                }
+            });
+        } catch (error) {
+            console.error("Errore nell'inizializzazione di Firebase:", error);
+            showMessage("Errore critico di sistema. Controlla la console.", true);
+        }
+    }
+    
+    async function checkRegistrationStatus() {
+        if (!userId) return;
+        const regRef = doc(db, getRegistrationDocPath(userId));
+        const regSnap = await getDoc(regRef);
+
+        if (regSnap.exists()) {
+            isRegistered = true;
+        } else {
+            isRegistered = false;
+        }
+    }
+
+    // --- LISTENER FIREBASE IN TEMPO REALE ---
+
+    function startStateListeners() {
+        if (!isAuthReady) return;
+
+        // Listener 1: Stato di Votazione e Codice (Attiva/Disattiva/Reset Signal)
+        onSnapshot(doc(db, getSettingsDocPath()), (docSnap) => {
+            const data = docSnap.data();
+            
+            isVotingActive = data ? data.isActive : false;
+            requiredCode = data ? (data.requiredCode || null) : null; 
+
+            // Aggiorna lo stato nel pannello Admin SOLO se l'utente ha il ruolo Admin forzato
+            if (isAdminRole) {
+                votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
+                votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
+                toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
+                toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
+                
+                currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
+            }
+            
+            // Re-render (solo se non stiamo visualizzando i log)
+            if (!isViewingLog) renderApp();
+        }, (error) => {
+            console.error("Errore nel listener dello stato di votazione:", error);
+        });
+
+        // Listener 2: Risultati di Votazione (Conteggio in tempo reale)
+        const votesRef = collection(db, getVotesCollectionPath());
+        const q = query(votesRef);
+
+        onSnapshot(q, (snapshot) => {
+            const newResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
+            hasVotedInCurrentRound = false; 
+
+            snapshot.forEach((doc) => {
+                const voteData = doc.data();
+                const choice = voteData.vote;
+
+                if (newResults.hasOwnProperty(choice)) {
+                    newResults[choice]++;
+                }
+                
+                if (voteData.userId === userId) {
+                    hasVotedInCurrentRound = true;
+                }
+            });
+
+            votingResults = newResults;
+            
+            if(isRegistered && !isViewingLog) renderApp();
+
+        }, (error) => {
+            console.error("Errore nel listener dei risultati di votazione:", error);
+        });
+    }
+
+
+    // --- FUNZIONI DI AZIONE DELL'UTENTE ---
+
+    async function handleRegistration() {
+        const nome = document.getElementById('nome').value.trim();
+        const cognome = document.getElementById('cognome').value.trim();
+        const codice = document.getElementById('codice').value.trim();
+
+        if (!nome || !cognome || !codice) {
+            showMessage("Per favor, compila tutti i campi.", true);
+            return;
+        }
+
+        if (!requiredCode) {
+            showMessage("L'amministratore non ha ancora impostato il codice di accesso.", true);
+            return;
+        }
+
+        if (codice !== requiredCode) {
+            showMessage("Codice univoco errato. Per favore, verifica.", true);
+            return;
+        }
+        
+        const regRef = doc(db, getRegistrationDocPath(userId));
+        const attendeesRef = collection(db, getAttendeesCollectionPath()); 
+
+        try {
+            await setDoc(regRef, {
+                nome: nome,
+                cognome: cognome,
+                codice: codice, 
+                timestamp: serverTimestamp(),
+                userId: userId
+            });
+            
+            // Salva anche nel log presenze pubblico
+            await setDoc(doc(attendeesRef, userId), { 
+                nome: nome,
+                cognome: cognome,
+                timestamp: serverTimestamp(),
+                userId: userId
+            });
+
+            isRegistered = true;
+            showMessage(`Registrazione di ${nome} ${cognome} completata! Benvenuto/a.`);
+            renderApp();
+            
+        } catch (e) {
+            console.error("Errore durante la registrazione: ", e);
+            showMessage("Errore nel salvataggio della registrazione. Riprova.", true);
+        }
+    }
+
+    async function handleVote(choice) {
+        if (!isVotingActive) {
+            showMessage("La votazione è attualmente disattivata dall'amministrazione.", true);
+            return;
+        }
+        if (hasVotedInCurrentRound) {
+            showMessage("Hai già espresso il tuo voto in questa sessione. Attendi il prossimo voto.", true);
+            return;
+        }
+
+        try {
+            const votesRef = collection(db, getVotesCollectionPath());
+            
+            await addDoc(votesRef, {
+                userId: userId,
+                vote: choice,
+                timestamp: serverTimestamp()
+            });
+
+            showMessage(`Voto espresso: ${choice}. Grazie!`);
+            
+        } catch (e) {
+            console.error("Errore durante la votazione: ", e);
+            showMessage("Errore durante l'invio del voto. Riprova.", true);
+        }
+    }
+    
+    // --- FUNZIONI DI AZIONE ADMIN ---
+    
+    async function handleAdminCodeUpdate() {
+        if (!isAdminRole) return;
+        
+        const newCode = document.getElementById('admin-set-code').value.trim();
+        if (!newCode) {
+            showMessage("Inserisci un codice valido.", true);
+            return;
+        }
+
+        const settingsRef = doc(db, getSettingsDocPath());
+        
+        try {
+            await setDoc(settingsRef, { requiredCode: newCode }, { merge: true });
+            showMessage(`Nuovo codice impostato: ${newCode}.`);
+        } catch (e) {
+            console.error("Errore nell'aggiornamento del codice Admin: ", e);
+            showMessage("Errore nel salvataggio del codice.", true);
+        }
+    }
+
+    async function handleAdminToggle() {
+        if (!isAdminRole) return; 
+        
+        const settingsRef = doc(db, getSettingsDocPath());
+        const newState = !isVotingActive;
+        
+        try {
+            await setDoc(settingsRef, { isActive: newState, lastToggle: serverTimestamp() }, { merge: true });
+            showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`);
+        } catch (e) {
+            console.error("Errore nel toggle Admin: ", e);
+            showMessage("Errore nel cambio stato votazione.", true);
+        }
+    }
+
+    async function handleResetResults() {
+        if (!isAdminRole) return; 
+
+        console.warn("Attenzione: Inizializzazione reset voti. Questa azione è irreversibile.");
+        
+        try {
+            // FASE 0: Calcola il totale dei presenti prima del log
+            const attendeesRef = collection(db, getAttendeesCollectionPath());
+            const attendeesSnap = await getDocs(attendeesRef);
+            const totalAttendees = attendeesSnap.size;
+
+            // FASE 1: Salva il Log Storico se ci sono stati voti
+            const totalVotes = votingResults.Favorevole + votingResults.Contrario + votingResults.Astenuto;
+
+            if (totalVotes > 0) {
+                const logRef = collection(db, getDeliberationsCollectionPath());
+                await addDoc(logRef, {
+                    results: votingResults,
+                    totalVotes: totalVotes,
+                    totalAttendees: totalAttendees, 
+                    timestamp: serverTimestamp()
+                });
+                showMessage("Log storico della votazione salvato con successo.");
+            } else {
+                 showMessage("Nessun voto registrato. Log storico non salvato.", true);
+            }
+
+            // FASE 2: Cancellazione dei voti attuali
+            const votesRef = collection(db, getVotesCollectionPath());
+            const q = query(votesRef);
+            const snapshot = await getDocs(q);
+            
+            const batch = writeBatch(db);
+            snapshot.docs.forEach((d) => {
+                batch.delete(d.ref);
+            });
+            await batch.commit();
+
+            // FASE 3: Forzare la sincronizzazione di tutti i client
+            const settingsRef = doc(db, getSettingsDocPath());
+            await setDoc(settingsRef, { lastReset: serverTimestamp() }, { merge: true });
+            
+            showMessage("Tutti i risultati di votazione sono stati resettati con successo. I docenti possono ora votare di nuovo (se la votazione è attiva).");
+            
+        } catch (e) {
+            console.error("Errore nel reset dei voti: ", e);
+            showMessage("Errore nel reset dei voti. Riprova.", true);
+        }
+    }
+    
+    // --- FUNZIONI DI VISUALIZZAZIONE ADMIN ---
+
+    async function showAttendeesList() {
+        if (!isAdminRole) return;
+        isViewingLog = true;
+        mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento lista presenti...</p>';
+
+        try {
+            const attendeesRef = collection(db, getAttendeesCollectionPath());
+            const q = query(attendeesRef, orderBy('timestamp', 'desc')); 
+            const snapshot = await getDocs(q);
+            
+            let listHtml = snapshot.empty 
+                ? '<p class="text-center text-gray-500 p-4">Nessun docente registrato finora.</p>'
+                : `<ul class="log-list divide-y divide-gray-200">
+                    ${snapshot.docs.map(doc => {
+                        const data = doc.data();
+                        return `
+                            <li class="p-3 flex justify-between items-center text-sm">
+                                <span class="font-semibold text-gray-900">${data.cognome} ${data.nome}</span>
+                                <span class="text-gray-500 text-xs">${formatTimestamp(data.timestamp)}</span>
+                            </li>
+                        `;
+                    }).join('')}
+                </ul>`;
+
+            mainContentEl.innerHTML = `
+                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Lista Docenti Presenti (${snapshot.size})</h2>
+                ${listHtml}
+                <button id="back-to-vote-btn" class="w-full mt-4 py-2 px-4 rounded-xl text-white font-semibold bg-blue-500 hover:bg-blue-600">
+                    Torna alla Votazione
+                </button>
+            `;
+            document.getElementById('back-to-vote-btn').addEventListener('click', () => {
+                isViewingLog = false;
+                renderApp();
+            });
+
+        } catch (e) {
+            console.error("Errore nel caricamento lista presenti:", e);
+            mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento della lista.</p>';
+        }
+    }
+
+    async function showDeliberationsLog() {
+        if (!isAdminRole) return;
+        isViewingLog = true;
+        mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico delle delibere...</p>';
+        
+        try {
+            const logRef = collection(db, getDeliberationsCollectionPath());
+            const q = query(logRef, orderBy('timestamp', 'desc')); 
+            const snapshot = await getDocs(q);
+            
+            let logHtml = snapshot.empty 
+                ? '<p class="text-center text-gray-500 p-4">Nessuna votazione storica salvata finora.</p>'
+                : `<div class="log-list space-y-4">
+                    ${snapshot.docs.map((doc, index) => {
+                        const data = doc.data();
+                        const results = data.results;
+                        return `
+                            <div class="p-3 border rounded-lg shadow-sm bg-white">
+                                <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${snapshot.size - index} - Voti: ${data.totalVotes} / Presenti: ${data.totalAttendees || 'N/A'}</p>
+                                <p class="text-xs text-gray-500 mb-2">${formatTimestamp(data.timestamp)}</p>
+                                <div class="grid grid-cols-3 gap-1 text-xs font-semibold">
+                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${results.Favorevole}</span>
+                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${results.Contrario}</span>
+                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${results.Astenuto}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>`;
+
+            mainContentEl.innerHTML = `
+                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Log Storico Votazioni (${snapshot.size})</h2>
+                ${logHtml}
+                <button id="back-to-vote-btn" class="w-full mt-4 py-2 px-4 rounded-xl text-white font-semibold bg-blue-500 hover:bg-blue-600">
+                    Torna alla Votazione
+                </button>
+            `;
+            document.getElementById('back-to-vote-btn').addEventListener('click', () => {
+                isViewingLog = false;
+                renderApp();
+            });
+
+        } catch (e) {
+            console.error("Errore nel caricamento log storico:", e);
+            mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento del log storico.</p>';
+        }
+    }
+
+    // Aggiungi listener per i pulsanti Admin
+    if (adminPanelEl) { // Controlla se il pannello esiste prima di attaccare i listener
+        toggleVotingBtn.addEventListener('click', handleAdminToggle);
+        resetResultsBtn.addEventListener('click', handleResetResults);
+        updateCodeBtn.addEventListener('click', handleAdminCodeUpdate); 
+        showAttendeesBtn.addEventListener('click', showAttendeesList); 
+        showDeliberationsBtn.addEventListener('click', showDeliberationsLog); 
+    }
+
+
+    // --- FUNZIONE DI RENDERING (Mostra la pagina corretta) ---
+    
+    function renderApp() {
+        if (!isAuthReady || isViewingLog) return; 
+        
+        mainContentEl.innerHTML = ''; 
+
+        if (!isRegistered) {
+            renderRegistrationPage(); 
+        } else {
+            renderVotingPage(); 
+        }
+    }
+
+    function renderRegistrationPage() {
+        // ... (Logica di rendering Pagina Registrazione)
+        const codeStatus = requiredCode 
+            ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO. Inserisci il codice comunicato.</p>'
+            : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice di accesso NON ancora impostato dall\'amministratore.</p>';
+
+        mainContentEl.innerHTML = `
+            <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
+                <span class="text-blue-600">Registro</span> Presenze Collegio
+            </h2>
+            <div class="p-3 mb-4 rounded-xl bg-gray-50 border border-gray-200">
+                <p class="text-sm text-gray-600 text-center">ID Utente: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || 'Caricamento...'}</span></p>
+            </div>
+            ${codeStatus}
+            <div class="space-y-4">
+                <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" />
+                <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" />
+                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" />
+                
+                <button id="register-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg">
+                    Registra Presenza
+                </button>
+            </div>
+        `;
+        document.getElementById('register-btn').addEventListener('click', handleRegistration);
+    }
+
+    function renderVotingPage() {
+        // ... (Logica di rendering Pagina Votazione)
+        const statusClass = isVotingActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+        const statusText = isVotingActive ? 'Votazione Attiva: Esprimi il tuo voto.' : 'Votazione Chiusa: Attendi l\'attivazione.';
+        const disabledClass = isVotingActive && !hasVotedInCurrentRound ? '' : 'opacity-50 cursor-not-allowed';
+        const buttonDisabled = isVotingActive && !hasVotedInCurrentRound ? '' : 'disabled';
+        
+        let voteMessage = '';
+        if (hasVotedInCurrentRound) {
+            voteMessage = '<p class="text-center text-sm text-yellow-700 p-2 bg-yellow-50 rounded-lg">Hai già votato per la mozione corrente.</p>';
+        }
+
+
+        mainContentEl.innerHTML = `
+            <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
+                <span class="text-blue-600">Votazione</span> in Corso
+            </h2>
+            <div class="p-4 rounded-xl mb-6 font-semibold text-center ${statusClass}">
+                ${statusText}
+            </div>
+            
+            ${voteMessage}
+            
+            <div class="grid grid-cols-1 gap-4">
+                <button data-vote="Favorevole" ${buttonDisabled} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-green-600 hover:bg-green-700 ${disabledClass} shadow-lg">
+                    Favorevole (${votingResults.Favorevole})
+                </button>
+                <button data-vote="Contrario" ${buttonDisabled} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-red-600 hover:bg-red-700 ${disabledClass} shadow-lg">
+                    Contrario (${votingResults.Contrario})
+                </button>
+                <button data-vote="Astenuto" ${buttonDisabled} class="vote-btn py-5 px-4 rounded-xl text-gray-800 font-bold text-lg bg-yellow-400 hover:bg-yellow-500 ${disabledClass} shadow-lg">
+                    Astenuto (${votingResults.Astenuto})
+                </button>
+            </div>
+            
+            <div class="mt-8 pt-4 border-t border-gray-200">
+                <h3 class="text-lg font-bold text-gray-800 mb-2 text-center">Risultati Aggregati in Tempo Reale</h3>
+                <div class="grid grid-cols-3 gap-2 text-center font-bold">
+                    <div class="p-2 bg-green-100 rounded-lg">Favorevole: ${votingResults.Favorevole}</div>
+                    <div class="p-2 bg-red-100 rounded-lg">Contrario: ${votingResults.Contrario}</div>
+                    <div class="p-2 bg-yellow-100 rounded-lg">Astenuto: ${votingResults.Astenuto}</div>
+                </div>
+                <p class="text-sm text-gray-500 text-center mt-2">Totale Voti: ${votingResults.Favorevole + votingResults.Contrario + votingResults.Astenuto}</p>
+            </div>
+        `;
+        
+        document.querySelectorAll('.vote-btn').forEach(button => {
+            button.addEventListener('click', (e) => {
+                if (!button.disabled) {
+                    handleVote(e.target.dataset.vote);
+                }
+            });
+        });
+    }
+
+    // Avvia l'app
+    initFirebase();
+</script>
+
+</body>
+</html>
