@@ -1,4 +1,5 @@
 
+<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -117,10 +118,35 @@
 
     // Setta il livello di log per il debugging
     setLogLevel('Debug');
+    
+    // =====================================================================
+    // CONFIGURAZIONE FIREBASE PER HOSTING ESTERNO (CRITICO!)
+    // DEVI INSERIRE QUI I DETTAGLI DI CONFIGURAZIONE DEL TUO PROGETTO FIREBASE.
+    // Sostituisci i placeholder "IL-TUO-..." con i tuoi valori reali dalla Console Firebase.
+    // =====================================================================
 
-    // Variabili Globali fornite dall'ambiente Canvas
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const EXTERNAL_FIREBASE_CONFIG = {
+        apiKey: "AIzaSyAYqT8p5ITdUKvyXKb4piEBTRjIUCg40t0",
+        authDomain: "votazione-collegio-docenti.firebaseapp.com",
+        projectId: "votazione-collegio-docenti",
+        storageBucket: "votazione-collegio-docenti.firebasestorage.app",
+        messagingSenderId: "967337243789",
+        appId: "1:967337243789:web:fdaabd894d7abc45bf1ec4"
+    };
+
+    // Variabili Globali (Ora utilizzano il fallback esterno)
+    
+    // Variabile 1: ID Applicazione (Usata per isolare i dati in Firestore)
+    // Se l'app è ospitata esternamente (non nel Canvas), usa un ID fisso e unico (es. 'collegio-docenti-ufficiale').
+    const EXTERNAL_APP_ID = 'collegio-docenti-ufficiale';
+    const appId = typeof __app_id !== 'undefined' ? __app_id : EXTERNAL_APP_ID;
+
+    // Variabile 2: Configurazione del Progetto Firebase
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+        ? JSON.parse(__firebase_config) 
+        : EXTERNAL_FIREBASE_CONFIG; 
+        
+    // Variabile 3: Token di Autenticazione (Non necessario per hosting esterno)
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
     
     // Stato dell'Applicazione
@@ -134,7 +160,7 @@
     let requiredCode = null; 
     let adminUserId = null; 
     let isViewingLog = false; 
-    let isAdminRole = false; // NUOVO: Flag per il ruolo Admin forzato
+    let isAdminRole = false; 
 
     // Elementi UI
     const mainContentEl = document.getElementById('main-content');
@@ -211,7 +237,7 @@
                     userId = user.uid;
                     isAuthReady = true;
                     
-                    // NUOVO: Controlla se il ruolo Admin è forzato dall'URL
+                    // Controlla se il ruolo Admin è forzato dall'URL
                     isAdminRole = getUrlParameter('role') === 'admin';
 
                     // L'adminUserId è l'utente attuale se il ruolo è forzato, altrimenti il primo che carica
@@ -241,6 +267,7 @@
             });
         } catch (error) {
             console.error("Errore nell'inizializzazione di Firebase:", error);
+            // Questo è il messaggio generico che vedi, causato da una configurazione mancante/errata
             showMessage("Errore critico di sistema. Controlla la console.", true);
         }
     }
