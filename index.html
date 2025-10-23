@@ -112,7 +112,7 @@
     // URL della Web App Google Sheets che gestisce le richieste.
     // DEVE essere aggiornato dopo ogni pubblicazione dello script GAS.
     // === ATTENZIONE: IL TUO LINK È ORA INCOLLATO QUI SOTTO. NON MODIFICARE. ===
-    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbykDcz-jl-XgHtHKPLLKB2k4_HlmEUrofyM8FTnxbx5jNKhO9HiEBbL_qCkHye4-RrJ/exec'; 
+    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwtPJcOsAg2P2ii-37BccY90fNwmWG5l89qBDcin5ql6qHl5-Xpk_99Vn_VtGmbMHvz/exec'; 
 
     // Stato dell'Applicazione
     let userId = null;
@@ -576,6 +576,21 @@
         
         mainContentEl.innerHTML = ''; 
 
+        // Se è un utente Admin, mostra solo l'interfaccia di benvenuto Admin
+        if (isAdminRole) {
+            mainContentEl.innerHTML = `
+                <h2 class="text-3xl font-extrabold text-green-600 text-center mb-6">Pannello di Controllo Pronto</h2>
+                <p class="text-center text-gray-700">Utilizza i pulsanti nel pannello grigio sottostante per gestire il codice di accesso e le votazioni.</p>
+                <div class="p-4 mt-4 bg-gray-100 rounded-lg">
+                    <p class="font-semibold">Stato Attuale:</p>
+                    <p class="text-sm text-gray-600">Votazione: <span id="admin-render-voting-status" class="font-bold">${isVotingActive ? 'ATTIVA' : 'DISATTIVA'}</span></p>
+                    <p class="text-sm text-gray-600">Codice richiesto: <span id="admin-render-code" class="font-bold">${requiredCode || 'Nessuno'}</span></p>
+                </div>
+            `;
+            return;
+        }
+
+        // Logica per gli utenti Docenti (Registrazione o Voto)
         if (!isRegistered) {
             checkRegistrationStatus(); // Riprova il check ad ogni render
             renderRegistrationPage(); 
@@ -586,6 +601,7 @@
 
     function renderRegistrationPage() {
         // Preserva i valori attuali dei campi prima di ricreare il DOM
+        // (Nota: in questa versione non c'è più bisogno di preservare, ma il codice rimane)
         const savedNome = document.getElementById('nome')?.value || '';
         const savedCognome = document.getElementById('cognome')?.value || '';
         const savedCodice = document.getElementById('codice')?.value || '';
