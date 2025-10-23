@@ -112,7 +112,7 @@
     // URL della Web App Google Sheets che gestisce le richieste.
     // DEVE essere aggiornato dopo ogni pubblicazione dello script GAS.
     // === ATTENZIONE: IL TUO LINK È ORA INCOLLATO QUI SOTTO. NON MODIFICARE. ===
-    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzp2R4ERD8bLe5Pa7zVtJJxZa_6J2DlTrxT0eeT1VVtx_2KEiv4fO9394jykxljBs9p/exec'; 
+    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwtPJcOsAg2P2ii-37BccY90fNwmWG5l89qBDcin5ql6qHl5-Xpk_99Vn_VtGmbMHvz/exec'; 
 
     // Stato dell'Applicazione
     let userId = null;
@@ -255,13 +255,14 @@
             if (isViewingLog) return; // Non aggiornare se stiamo visualizzando i log
             
             try {
+                // 1. Fetch data
                 const statusData = await fetchFromGAS('get_status');
                 
                 isVotingActive = statusData.isVotingActive;
                 requiredCode = statusData.requiredCode;
                 votingResults = statusData.results;
                 
-                // Aggiorna lo stato nel pannello Admin
+                // 2. Aggiorna lo stato nel pannello Admin
                 if (isAdminRole) {
                     votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
                     votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
@@ -271,10 +272,19 @@
                     currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
                 }
                 
-                // Aggiorna lo stato di voto per l'utente corrente
+                // 3. Aggiorna lo stato di voto per l'utente corrente
                 await checkUserVotedStatus();
+
+                // 4. Verifica se l'utente è attualmente sulla pagina di registrazione (per non cancellare l'input)
+                const isCurrentlyOnRegistrationForm = mainContentEl.querySelector('#nome') !== null;
                 
-                renderApp();
+                if (isRegistered || !isCurrentlyOnRegistrationForm) {
+                    // Se l'utente è registrato (deve vedere i voti aggiornati) 
+                    // O se l'interfaccia non è ancora il modulo di registrazione (caricamento iniziale), 
+                    // allora esegui il rendering. Altrimenti, preserva l'input.
+                    renderApp();
+                }
+
             } catch (e) {
                 console.error("Errore nel polling:", e);
                 if (mainContentEl.innerHTML.indexOf('ERRORE CRITICO') === -1) {
@@ -575,6 +585,11 @@
     }
 
     function renderRegistrationPage() {
+        // Preserva i valori attuali dei campi prima di ricreare il DOM
+        const savedNome = document.getElementById('nome')?.value || '';
+        const savedCognome = document.getElementById('cognome')?.value || '';
+        const savedCodice = document.getElementById('codice')?.value || '';
+        
         const codeStatus = requiredCode 
             ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO. Inserisci il codice comunicato.</p>'
             : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice di accesso NON ancora impostato dall\'amministratore.</p>';
@@ -591,9 +606,9 @@
                 : codeStatus
             }
             <div class="space-y-4">
-                <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" ${isRegistered ? 'disabled' : ''}/>
-                <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" ${isRegistered ? 'disabled' : ''}/>
-                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" ${isRegistered ? 'disabled' : ''}/>
+                <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedNome}" ${isRegistered ? 'disabled' : ''}/>
+                <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedCognome}" ${isRegistered ? 'disabled' : ''}/>
+                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedCodice}" ${isRegistered ? 'disabled' : ''}/>
                 
                 <button id="register-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg ${isRegistered ? 'opacity-50 cursor-not-allowed' : ''}" ${isRegistered ? 'disabled' : ''}>
                     Registra Presenza
