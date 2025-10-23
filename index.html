@@ -112,7 +112,7 @@
     // URL della Web App Google Sheets che gestisce le richieste.
     // DEVE essere aggiornato dopo ogni pubblicazione dello script GAS.
     // === ATTENZIONE: IL TUO LINK È ORA INCOLLATO QUI SOTTO. NON MODIFICARE. ===
-    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyRdw4WoslPEbJNrexrolHonO66pplqbZpWtpDwXoJ7rSPcv8dr5JH0tCN6pgQr1hpg/exec'; 
+    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwtPJcOsAg2P2ii-37BccY90fNwmWG5l89qBDcin5ql6qHl5-Xpk_99Vn_VtGmbMHvz/exec'; 
 
     // Stato dell'Applicazione
     let userId = null;
@@ -362,7 +362,8 @@
             return;
         }
 
-        if (codice !== requiredCode) {
+        // *** CORREZIONE: Uso la comparazione DEBOLE (==) per gestire la differenza tra Stringa (Input) e Numero (GAS/Sheets) ***
+        if (codice != requiredCode) {
             showMessage("Codice univoco errato. Per favore, verifica.", true);
             return;
         }
