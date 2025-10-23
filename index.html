@@ -198,6 +198,9 @@
         for (const key in params) {
             url.searchParams.append(key, params[key]);
         }
+        
+        // Aggiunge un parametro casuale per forzare il bypass della cache di tutti i server
+        url.searchParams.append('_t', new Date().getTime());
 
         try {
             const response = await fetch(url.toString(), {
