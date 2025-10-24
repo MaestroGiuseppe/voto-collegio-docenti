@@ -123,7 +123,7 @@
             throw new Error("Errore: Chiave API Supabase non configurata.");
         }
         // Inizializza il client Supabase
-        supabase = supabaseClient.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log("Supabase Client inizializzato con successo."); // Messaggio di conferma
         
     } catch (e) {
@@ -226,37 +226,51 @@
     
     // ASCOLTO IN TEMPO REALE CON SUPABASE
     function startRealtimeListening() {
-        // 1. Ascolta i cambiamenti di stato (per admin)
-        supabase
-            .channel('settings_changes')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, payload => {
-                // Aggiorna lo stato globale quando le impostazioni cambiano
-                fetchSettingsAndVotes();
-            })
-            .subscribe();
+        // Fallback per garantire che l'app non si blocchi se il Realtime fallisce
+        try {
+            // 1. Ascolta i cambiamenti di stato (per admin)
+            supabase
+                .channel('settings_changes')
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, payload => {
+                    // Aggiorna lo stato globale quando le impostazioni cambiano
+                    fetchSettingsAndVotes();
+                })
+                .subscribe();
 
-        // 2. Ascolta i nuovi voti (per tutti)
-        supabase
-            .channel('vote_changes')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendees' }, payload => {
-                // Se un nuovo utente si registra, aggiorna il conteggio delle presenze
-                fetchSettingsAndVotes();
-            })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
-                // Aggiorna i risultati in tempo reale
-                fetchSettingsAndVotes();
-            })
-            .subscribe();
+            // 2. Ascolta i nuovi voti (per tutti)
+            supabase
+                .channel('vote_changes')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendees' }, payload => {
+                    // Se un nuovo utente si registra, aggiorna il conteggio delle presenze
+                    fetchSettingsAndVotes();
+                })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
+                    // Aggiorna i risultati in tempo reale
+                    fetchSettingsAndVotes();
+                })
+                .subscribe();
+
+            console.log("Supabase Realtime Abilitato.");
+        } catch (error) {
+            console.error("Supabase Realtime non disponibile. Esecuzione in modalità polling.");
+            // Se Realtime fallisce, usiamo un fallback di polling
+            startPollingFallback();
+        }
 
         // Primo fetch per popolare l'interfaccia
         fetchSettingsAndVotes();
     }
 
+    function startPollingFallback() {
+         setInterval(fetchSettingsAndVotes, 2000); // Polling ogni 2 secondi
+    }
+
+
     async function fetchSettingsAndVotes() {
         // Fetch Settings
         const { data: settingsData, error: settingsError } = await supabase
             .from('settings')
-            .select('*')
+            .select('is_voting_active, required_code, id')
             .limit(1)
             .single();
 
@@ -316,7 +330,7 @@
         if (regError) {
             console.error("Errore check registrazione:", regError);
         } else {
-            isRegistered = regData.length > 0;
+            isRegistered = regData && regData.length > 0;
         }
         
         // 2. Controlla se ha votato (in 'votes')
@@ -329,7 +343,7 @@
         if (voteError) {
             console.error("Errore check voto:", voteError);
         } else {
-            hasVotedInCurrentRound = voteData.length > 0;
+            hasVotedInCurrentRound = voteData && voteData.length > 0;
         }
     }
     
@@ -350,7 +364,7 @@
             return;
         }
 
-        // Il codice in Supabase è gestito come testo
+        // Confronto di stringhe corretto
         if (codice !== requiredCode) {
             showMessage("Codice univoco errato. Per favore, verifica.", true);
             return;
