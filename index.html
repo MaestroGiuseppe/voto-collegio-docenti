@@ -116,14 +116,14 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRF6So4PYRKCW0gMQuNJ16PvDt8'; 
 
     // --- INIZIALIZZAZIONE ---
-    let supabase;
+    let supabaseClient; // Rinominata per evitare conflitto con l'oggetto globale 'supabase'
     
     try {
         if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'LA_TUA_CHIAVE_ANON_PUBBLICA_REALE') {
             throw new Error("Errore: Chiave API Supabase non configurata.");
         }
-        // Inizializza il client Supabase
-        supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Inizializza il client Supabase usando l'oggetto globale 'supabase'
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log("Supabase Client inizializzato con successo."); // Messaggio di conferma
         
     } catch (e) {
@@ -229,7 +229,7 @@
         // Fallback per garantire che l'app non si blocchi se il Realtime fallisce
         try {
             // 1. Ascolta i cambiamenti di stato (per admin)
-            supabase
+            supabaseClient
                 .channel('settings_changes')
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, payload => {
                     // Aggiorna lo stato globale quando le impostazioni cambiano
@@ -238,7 +238,7 @@
                 .subscribe();
 
             // 2. Ascolta i nuovi voti (per tutti)
-            supabase
+            supabaseClient
                 .channel('vote_changes')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendees' }, payload => {
                     // Se un nuovo utente si registra, aggiorna il conteggio delle presenze
@@ -268,7 +268,7 @@
 
     async function fetchSettingsAndVotes() {
         // Fetch Settings
-        const { data: settingsData, error: settingsError } = await supabase
+        const { data: settingsData, error: settingsError } = await supabaseClient
             .from('settings')
             .select('is_voting_active, required_code, id')
             .limit(1)
@@ -287,7 +287,7 @@
         }
 
         // Fetch Votes Count
-        const { data: votesData, error: votesError } = await supabase
+        const { data: votesData, error: votesError } = await supabaseClient
             .rpc('get_vote_counts');
             
         if (votesError) {
@@ -321,7 +321,7 @@
 
     async function checkUserVotedStatus() {
         // 1. Controlla lo stato di registrazione (registrato in 'attendees')
-        const { data: regData, error: regError } = await supabase
+        const { data: regData, error: regError } = await supabaseClient
             .from('attendees')
             .select('id')
             .eq('user_id', userId)
@@ -334,7 +334,7 @@
         }
         
         // 2. Controlla se ha votato (in 'votes')
-        const { data: voteData, error: voteError } = await supabase
+        const { data: voteData, error: voteError } = await supabaseClient
             .from('votes')
             .select('id')
             .eq('user_id', userId)
@@ -371,7 +371,7 @@
         }
         
         // Insert new attendee
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('attendees')
             .insert({ user_id: userId, nome: nome, cognome: cognome, codice: codice });
             
@@ -401,7 +401,7 @@
             return;
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('votes')
             .insert({ user_id: userId, vote: choice });
 
@@ -429,7 +429,7 @@
         const newCode = document.getElementById('admin-set-code').value.trim();
         const codeToSave = newCode || null; // Salva NULL se vuoto
 
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('settings')
             .upsert({ id: lastResetId || 1, required_code: codeToSave });
 
@@ -446,7 +446,7 @@
         
         const newState = !isVotingActive;
         
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('settings')
             .upsert({ id: lastResetId || 1, is_voting_active: newState });
 
@@ -463,8 +463,8 @@
 
         try {
             // 1. Ottieni il conteggio finale e i presenti
-            const { data: finalVotes, error: votesError } = await supabase.rpc('get_vote_counts');
-            const { count: attendeesCount, error: attendeesError } = await supabase.from('attendees').select('*', { count: 'exact', head: true });
+            const { data: finalVotes, error: votesError } = await supabaseClient.rpc('get_vote_counts');
+            const { count: attendeesCount, error: attendeesError } = await supabaseClient.from('attendees').select('*', { count: 'exact', head: true });
 
             if (votesError || attendeesError) {
                 throw new Error("Errore nel recupero dei conteggi finali.");
@@ -477,19 +477,19 @@
                 contrario: finalVotes.find(r => r.vote === 'Contrario')?.count || 0,
                 astenuto: finalVotes.find(r => r.vote === 'Astenuto')?.count || 0,
             };
-            const { error: logError } = await supabase.from('log').insert(logEntry);
+            const { error: logError } = await supabaseClient.from('log').insert(logEntry);
             if (logError) throw new Error("Errore nel salvataggio del log storico.");
 
             // 3. Cancella i voti
-            const { error: deleteVotesError } = await supabase.from('votes').delete().neq('id', 0); // Cancella tutto
+            const { error: deleteVotesError } = await supabaseClient.from('votes').delete().neq('id', 0); // Cancella tutto
             if (deleteVotesError) throw new Error("Errore nella cancellazione dei voti.");
             
             // 4. Cancella i presenti (per la prossima riunione)
-            const { error: deleteAttendeesError } = await supabase.from('attendees').delete().neq('id', 0);
+            const { error: deleteAttendeesError } = await supabaseClient.from('attendees').delete().neq('id', 0);
             if (deleteAttendeesError) throw new Error("Errore nella cancellazione dei presenti.");
             
             // 5. Aggiorna lo stato Admin (per forzare il refresh locale)
-            const { error: settingsUpdateError } = await supabase
+            const { error: settingsUpdateError } = await supabaseClient
                 .from('settings')
                 .upsert({ id: lastResetId || 1, last_reset_at: new Date().toISOString() });
             
@@ -515,7 +515,7 @@
         mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento lista presenti...</p>';
 
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('attendees')
                 .select('nome, cognome, created_at')
                 .order('created_at', { ascending: false });
@@ -559,7 +559,7 @@
         mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico delle delibere...</p>';
         
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('log')
                 .select('created_at, attendees_count, favorevole, contrario, astenuto')
                 .order('created_at', { ascending: false });
