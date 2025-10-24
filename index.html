@@ -3,16 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Votazione Collegio Docenti</title>
+    <title>Votazione Collegio Docenti - Supabase</title>
     <!-- Caricamento di Tailwind CSS per lo styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inclusione della libreria Supabase client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         /* Stile personalizzato per il corpo e i pulsanti */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f3f4f6;
             min-height: 100vh;
-            /* Modificato per impilare verticalmente e mantenere il centraggio */
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -25,7 +27,7 @@
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
             max-width: 480px;
             width: 95%;
-            margin-bottom: 1.5rem; /* Aggiunto margine inferiore per separazione */
+            margin-bottom: 1.5rem;
         }
         .vote-btn {
             transition: all 0.2s;
@@ -64,8 +66,7 @@
 <!-- CONTENITORE PRINCIPALE (Registrazione/Votazione/Log) -->
 <div id="app-container" class="container-card">
     <div id="main-content">
-        <!-- Il contenuto dell'applicazione (registrazione o votazione) verrà iniettato qui -->
-        <p class="text-center text-gray-500">Caricamento in corso...</p>
+        <p class="text-center text-gray-500">Inizializzazione Supabase...</p>
     </div>
 </div>
 
@@ -107,13 +108,30 @@
     </div>
 </div>
 
-<!-- Script Logica Applicativa (NON USA FIREBASE) -->
+<!-- Script Logica Applicativa (Supabase) -->
 <script>
-    // URL della Web App Google Sheets che gestisce le richieste.
-    // DEVE essere aggiornato dopo ogni pubblicazione dello script GAS.
-    // === ATTENZIONE: IL TUO LINK È ORA INCOLLATO QUI SOTTO. NON MODIFICARE. ===
-    const SHEET_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxbKkITM905elr3gcNNzLKhc2ogSedM8r5Z9TeG2ah6Mv9J5TcqgQ3wjlg5AYUwsKo/exec'; 
+    // --- CONFIGURAZIONE SUPABASE ---
+    // Devi inserire l'URL del tuo progetto Supabase e la chiave anon pubblica.
+    // L'URL è stato inserito, ora incolla la chiave alla riga successiva.
+    const SUPABASE_URL = 'https://fiwxcvafquxhkmulivgp.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRFJ6So4PYRKCW0gMQuNJ16PvDt8'; // Chiave anon pubblica inserita
 
+    // --- INIZIALIZZAZIONE ---
+    let supabase;
+    
+    try {
+        if (SUPABASE_ANON_KEY === 'LA_TUA_CHIAVE_ANON_PUBBLICA_REALE' || !SUPABASE_ANON_KEY) {
+            throw new Error("Errore: Chiave API Supabase non configurata.");
+        }
+        supabase = supabaseClient.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+        document.getElementById('main-content').innerHTML = `
+            <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE DI CONFIGURAZIONE</h2>
+            <p class="text-gray-700 mb-4 text-center">Per favore, inserisci la chiave API Supabase anonima nel file index.html (riga 208).</p>
+        `;
+        throw new Error("Supabase non inizializzato: Chiave mancante.");
+    }
+    
     // Stato dell'Applicazione
     let userId = null;
     let isRegistered = false;
@@ -123,7 +141,7 @@
     let requiredCode = null; 
     let isViewingLog = false; 
     let isAdminRole = false; 
-    let lastResetTimestamp = 0; // Utilizzato per il check del voto
+    let lastResetId = 0; // Usato per tracciare il reset (Row ID della tabella settings)
 
     // Elementi UI
     const mainContentEl = document.getElementById('main-content');
@@ -137,23 +155,18 @@
     const showAttendeesBtn = document.getElementById('show-attendees-btn'); 
     const showDeliberationsBtn = document.getElementById('show-deliberations-btn'); 
 
-
     // --- FUNZIONI DI UTILITÀ ---
-
-    // Funzione per generare un ID Utente casuale e persistente (sostituisce l'auth di Firebase)
+    
+    // Funzione per generare un ID Utente casuale e persistente
     function getUserId() {
         let uid = localStorage.getItem('votingAppUserId');
         if (!uid) {
-            // Genera un UUID v4
-            uid = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-            );
+            uid = crypto.randomUUID();
             localStorage.setItem('votingAppUserId', uid);
         }
         return uid;
     }
 
-    // Funzione per controllare i parametri nell'URL
     function getUrlParameter(name) {
         name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
         const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
@@ -161,7 +174,6 @@
         return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
     }
 
-    // Formatta il timestamp
     function formatTimestamp(timestampStr) {
         if (!timestampStr) return 'N/A';
         const date = new Date(timestampStr);
@@ -171,7 +183,6 @@
         });
     }
 
-    // Mostra un messaggio all'utente invece di alert()
     function showMessage(message, isError = false) {
         const type = isError ? 'bg-red-500' : 'bg-green-500';
         const messageEl = document.createElement('div');
@@ -185,53 +196,12 @@
         }, 3000);
     }
     
-    // Funzione per inviare richieste al Google Apps Script (GAS)
-    async function fetchFromGAS(action, params = {}) {
-        if (SHEET_WEB_APP_URL === 'YOUR_GAS_WEB_APP_URL') {
-            throw new Error("API URL non configurato. Incolla il link della Web App di Google Sheets nel codice.");
-        }
-        
-        const url = new URL(SHEET_WEB_APP_URL);
-        url.searchParams.append('action', action);
-        url.searchParams.append('userId', userId);
-        
-        for (const key in params) {
-            url.searchParams.append(key, params[key]);
-        }
-        
-        // Aggiunge un parametro casuale per forzare il bypass della cache di tutti i server
-        url.searchParams.append('_t', new Date().getTime());
-
-        try {
-            const response = await fetch(url.toString(), {
-                method: 'GET', // Usiamo GET per semplicità, gestito da doGet in GAS
-            });
-
-            if (!response.ok) {
-                throw new Error(`Errore HTTP: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.status === 'error') {
-                throw new Error(result.message);
-            }
-            return result;
-        } catch (error) {
-            console.error(`Errore nell'azione ${action}:`, error.message);
-            throw new Error(`Connessione fallita. Controlla lo script GAS.`);
-        }
-    }
-
-
     // --- FUNZIONI DI INIZIALIZZAZIONE ---
 
     function initApp() {
         userId = getUserId();
         isAdminRole = getUrlParameter('role') === 'admin';
         
-        // Nel modello Sheets, l'AdminUserId è l'ID del client che ha caricato la pagina admin
-        // Se non è l'admin, adminUserId rimane null, ma l'ID dell'utente è visibile
         const adminIdDisplay = userId.substring(0, 10) + '...';
         adminUserIdEl.textContent = adminIdDisplay;
 
@@ -248,106 +218,121 @@
             showDeliberationsBtn.addEventListener('click', showDeliberationsLog); 
         }
 
-        // Avvia il loop di polling (simulazione del listener in tempo reale)
-        startPollingLoop();
+        // Avvia l'ascolto in tempo reale (Supabase Realtime)
+        startRealtimeListening();
     }
     
-    // Simula i listener in tempo reale (polling)
-    function startPollingLoop() {
-        setInterval(async () => {
-            if (isViewingLog) return; // Non aggiornare se stiamo visualizzando i log
+    // ASCOLTO IN TEMPO REALE CON SUPABASE
+    function startRealtimeListening() {
+        // 1. Ascolta i cambiamenti di stato (per admin)
+        supabase
+            .channel('settings_changes')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, payload => {
+                // Aggiorna lo stato globale quando le impostazioni cambiano
+                fetchSettingsAndVotes();
+            })
+            .subscribe();
+
+        // 2. Ascolta i nuovi voti (per tutti)
+        supabase
+            .channel('vote_changes')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendees' }, payload => {
+                // Se un nuovo utente si registra, aggiorna il conteggio delle presenze
+                fetchSettingsAndVotes();
+            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
+                // Aggiorna i risultati in tempo reale
+                fetchSettingsAndVotes();
+            })
+            .subscribe();
+
+        // Primo fetch per popolare l'interfaccia
+        fetchSettingsAndVotes();
+    }
+
+    async function fetchSettingsAndVotes() {
+        // Fetch Settings
+        const { data: settingsData, error: settingsError } = await supabase
+            .from('settings')
+            .select('*')
+            .limit(1)
+            .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 = No Rows Found
+            console.error("Errore fetch settings:", settingsError);
+            return;
+        }
+
+        if (settingsData) {
+            isVotingActive = settingsData.is_voting_active;
+            requiredCode = settingsData.required_code ? String(settingsData.required_code) : null;
+            lastResetId = settingsData.id;
+        }
+
+        // Fetch Votes Count
+        const { data: votesData, error: votesError } = await supabase
+            .rpc('get_vote_counts');
             
-            try {
-                // 1. Fetch data
-                const statusData = await fetchFromGAS('get_status');
-                
-                isVotingActive = statusData.isVotingActive;
-                requiredCode = statusData.requiredCode;
-                votingResults = statusData.results;
-                
-                // 2. Aggiorna lo stato nel pannello Admin
-                if (isAdminRole) {
-                    votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
-                    votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
-                    toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
-                    toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
-                    
-                    currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
-                }
-                
-                // 3. Aggiorna lo stato di voto per l'utente corrente
-                await checkUserVotedStatus();
+        if (votesError) {
+            console.error("Errore fetch votes:", votesError);
+            return;
+        }
+        
+        // Aggiorna i risultati
+        votingResults = {
+            Favorevole: votesData.find(r => r.vote === 'Favorevole')?.count || 0,
+            Contrario: votesData.find(r => r.vote === 'Contrario')?.count || 0,
+            Astenuto: votesData.find(r => r.vote === 'Astenuto')?.count || 0,
+        };
+        
+        // Aggiorna lo stato locale dell'utente
+        await checkUserVotedStatus();
 
-                // 4. Verifica se l'utente è attualmente sulla pagina di registrazione (per non cancellare l'input)
-                const isCurrentlyOnRegistrationForm = mainContentEl.querySelector('#nome') !== null;
-                
-                if (isRegistered || !isCurrentlyOnRegistrationForm) {
-                    // Se l'utente è registrato (deve vedere i voti aggiornati) 
-                    // O se l'interfaccia non è ancora il modulo di registrazione (caricamento iniziale), 
-                    // allora esegui il rendering. Altrimenti, preserva l'input.
-                    renderApp();
-                }
+        // Rendering dell'interfaccia
+        renderApp();
 
-            } catch (e) {
-                console.error("Errore nel polling:", e);
-                if (mainContentEl.innerHTML.indexOf('ERRORE CRITICO') === -1) {
-                     mainContentEl.innerHTML = `
-                        <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE CRITICO DI CONNESSIONE</h2>
-                        <p class="text-gray-700 mb-4">L'app non riesce a comunicare con Google Sheets.</p>
-                        <p class="text-sm text-gray-600 mb-4">Verifica che l'URL nella variabile <span class="font-mono text-xs bg-gray-200 p-1 rounded">SHEET_WEB_APP_URL</span> sia corretto e che lo script GAS sia stato pubblicato come "Web app" accessibile a "Chiunque".</p>
-                    `;
-                }
-            }
-        }, 1500); // Polling ogni 1.5 secondi
+        // Aggiorna il pannello Admin
+        if (isAdminRole) {
+            votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
+            votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
+            toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
+            toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
+            
+            currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
+        }
     }
 
     async function checkUserVotedStatus() {
-        // Poiché non possiamo fare query complesse su Sheets direttamente,
-        // ci affidiamo all'HTML per verificare se l'utente ha votato
-        // dopo l'ultimo reset.
-        
-        // Questo è solo un controllo LOCAL storage basato sull'ultimo voto
-        // e non è infallibile, ma è la soluzione più semplice con Sheets.
-        
-        const userLastVote = localStorage.getItem('lastVoteTimestamp');
-        const userHasVoted = localStorage.getItem(`hasVoted_${userId}`);
+        // 1. Controlla lo stato di registrazione (registrato in 'attendees')
+        const { data: regData, error: regError } = await supabase
+            .from('attendees')
+            .select('id')
+            .eq('user_id', userId)
+            .limit(1);
 
-        // Controlla se il voto è stato espresso dopo l'ultima ora di reset
-        if (userHasVoted === 'true' && userLastVote && lastResetTimestamp && userLastVote < lastResetTimestamp) {
-             // Il voto è vecchio, lo resetta
-             localStorage.removeItem(`hasVoted_${userId}`);
-             localStorage.removeItem('lastVoteTimestamp');
-             hasVotedInCurrentRound = false;
-        } else if (userHasVoted === 'true') {
-            hasVotedInCurrentRound = true;
+        if (regError) {
+            console.error("Errore check registrazione:", regError);
         } else {
-            hasVotedInCurrentRound = false;
+            isRegistered = regData.length > 0;
         }
         
-        // Controllo aggiuntivo: cerca l'utente nel foglio Voti
-        // Questa è la verifica più robusta (da implementare in un sistema più complesso)
+        // 2. Controlla se ha votato (in 'votes')
+        // Usiamo lastResetId per vedere se il voto è successivo all'ultimo reset
+        const { data: voteData, error: voteError } = await supabase
+            .from('votes')
+            .select('id')
+            .eq('user_id', userId)
+            .limit(1);
 
+        if (voteError) {
+            console.error("Errore check voto:", voteError);
+        } else {
+            // Per il momento, Supabase gestisce automaticamente il "voto in sessione" 
+            // perché i vecchi voti vengono cancellati al reset.
+            hasVotedInCurrentRound = voteData.length > 0;
+        }
     }
     
-    // Simula la funzione checkRegistrationStatus di Firebase
-    async function checkRegistrationStatus() {
-        if (isRegistered) return;
-        
-        try {
-            const attendeesData = await fetchFromGAS('get_attendees');
-            
-            if (attendeesData.data) {
-                // Il terzo elemento nell'array del log è l'userId
-                const found = attendeesData.data.some(row => row[1] === userId); 
-                isRegistered = found;
-            }
-            
-        } catch (e) {
-            console.error("Errore nel check registrazione:", e);
-        }
-    }
-
-
     // --- FUNZIONI DI AZIONE DELL'UTENTE ---
 
     async function handleRegistration() {
@@ -365,32 +350,31 @@
             return;
         }
 
-        // *** CORREZIONE: Uso la comparazione DEBOLE (==) per gestire la differenza tra Stringa (Input) e Numero (GAS/Sheets) ***
-        if (codice != requiredCode) {
+        // Il codice in Supabase è gestito come testo
+        if (codice !== requiredCode) {
             showMessage("Codice univoco errato. Per favore, verifica.", true);
             return;
         }
         
-        try {
-            const result = await fetchFromGAS('register', {
-                nome: nome,
-                cognome: cognome,
-                codice: codice
-            });
+        // 1. Check if user is already registered (optional, handled by RLS)
+        // 2. Insert new attendee
+        const { error } = await supabase
+            .from('attendees')
+            .insert({ user_id: userId, nome: nome, cognome: cognome, codice: codice });
             
-            isRegistered = true;
-            showMessage(`Registrazione di ${nome} ${cognome} completata! Benvenuto/a.`);
-            renderApp();
-            
-        } catch (e) {
-            if (e.message.includes('Già registrato')) {
+        if (error) {
+            if (error.code === '23505') { // 23505 è codice per violazione di UNIQUE constraint
                 isRegistered = true;
                 showMessage("Sei già stato registrato. Passaggio alla votazione.");
                 renderApp();
                 return;
             }
-            console.error("Errore durante la registrazione: ", e);
+            console.error("Errore durante la registrazione: ", error);
             showMessage("Errore nel salvataggio della registrazione. Riprova.", true);
+        } else {
+            isRegistered = true;
+            showMessage(`Registrazione di ${nome} ${cognome} completata! Benvenuto/a.`);
+            renderApp();
         }
     }
 
@@ -404,28 +388,23 @@
             return;
         }
 
-        try {
-            const result = await fetchFromGAS('vote', {
-                vote: choice,
-            });
+        const { error } = await supabase
+            .from('votes')
+            .insert({ user_id: userId, vote: choice });
 
-            // Stato locale aggiornato per prevenire il doppio voto immediato
-            localStorage.setItem(`hasVoted_${userId}`, 'true');
-            localStorage.setItem('lastVoteTimestamp', new Date().getTime());
-            hasVotedInCurrentRound = true;
-            
-            showMessage(`Voto espresso: ${choice}. Grazie!`);
-            
-        } catch (e) {
-            if (e.message.includes('Hai già votato')) {
-                localStorage.setItem(`hasVoted_${userId}`, 'true');
+        if (error) {
+            if (error.code === '23505') { // Violazione UNIQUE
                 hasVotedInCurrentRound = true;
                 showMessage("Hai già votato per questa mozione.", true);
                 renderApp();
                 return;
             }
-            console.error("Errore durante la votazione: ", e);
+            console.error("Errore durante la votazione: ", error);
             showMessage("Errore durante l'invio del voto. Riprova.", true);
+        } else {
+            hasVotedInCurrentRound = true;
+            showMessage(`Voto espresso: ${choice}. Grazie!`);
+            // Realtime listener aggiorna l'interfaccia automaticamente
         }
     }
     
@@ -435,31 +414,34 @@
         if (!isAdminRole) return;
         
         const newCode = document.getElementById('admin-set-code').value.trim();
-        if (!newCode) {
-            showMessage("Inserisci un codice valido.", true);
-            return;
-        }
+        // Permettiamo di impostare anche un codice vuoto (per disattivare la registrazione)
 
-        try {
-            const result = await fetchFromGAS('update_code', {
-                newCode: newCode
-            });
-            showMessage(result.message); // Messaggio da GAS: "Codice impostato a X"
-        } catch (e) {
-            console.error("Errore nell'aggiornamento del codice Admin: ", e);
+        const { error } = await supabase
+            .from('settings')
+            .upsert({ id: lastResetId || 1, required_code: newCode });
+
+        if (error) {
+            console.error("Errore nell'aggiornamento del codice Admin: ", error);
             showMessage("Errore nel salvataggio del codice.", true);
+        } else {
+            showMessage(`Codice impostato a ${newCode || 'VUOTO'}.`);
         }
     }
 
     async function handleAdminToggle() {
         if (!isAdminRole) return; 
         
-        try {
-            const result = await fetchFromGAS('toggle_vote');
-            showMessage(`Votazione ${result.isVotingActive ? 'ATTIVATA' : 'DISATTIVATA'}.`);
-        } catch (e) {
-            console.error("Errore nel toggle Admin: ", e);
+        const newState = !isVotingActive;
+        
+        const { error } = await supabase
+            .from('settings')
+            .upsert({ id: lastResetId || 1, is_voting_active: newState });
+
+        if (error) {
+            console.error("Errore nel toggle Admin: ", error);
             showMessage("Errore nel cambio stato votazione.", true);
+        } else {
+            showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`);
         }
     }
 
@@ -467,20 +449,48 @@
         if (!isAdminRole) return; 
 
         try {
-            const result = await fetchFromGAS('reset_results');
+            // 1. Ottieni il conteggio finale e i presenti
+            const { data: finalVotes, error: votesError } = await supabase.rpc('get_vote_counts');
+            const { count: attendeesCount, error: attendeesError } = await supabase.from('attendees').select('*', { count: 'exact', head: true });
+
+            if (votesError || attendeesError) {
+                throw new Error("Errore nel recupero dei conteggi finali.");
+            }
+
+            // 2. Salva nel Log Storico
+            const logEntry = {
+                attendees_count: attendeesCount,
+                favorevole: finalVotes.find(r => r.vote === 'Favorevole')?.count || 0,
+                contrario: finalVotes.find(r => r.vote === 'Contrario')?.count || 0,
+                astenuto: finalVotes.find(r => r.vote === 'Astenuto')?.count || 0,
+            };
+            const { error: logError } = await supabase.from('log').insert(logEntry);
+            if (logError) throw new Error("Errore nel salvataggio del log storico.");
+
+            // 3. Cancella i voti
+            const { error: deleteVotesError } = await supabase.from('votes').delete().neq('id', 0); // Cancella tutto
+            if (deleteVotesError) throw new Error("Errore nella cancellazione dei voti.");
             
-            // Aggiorna il timestamp di reset locale
-            lastResetTimestamp = new Date().getTime();
-            localStorage.setItem('lastResetTimestamp', lastResetTimestamp);
+            // 4. Cancella i presenti (per la prossima riunione)
+            const { error: deleteAttendeesError } = await supabase.from('attendees').delete().neq('id', 0);
+            if (deleteAttendeesError) throw new Error("Errore nella cancellazione dei presenti.");
             
-            // Rimuove lo stato di voto locale per tutti gli utenti
-            localStorage.removeItem(`hasVoted_${userId}`);
+            // 5. Aggiorna lo stato Admin (per forzare il refresh locale)
+            const { error: settingsUpdateError } = await supabase
+                .from('settings')
+                .upsert({ id: lastResetId || 1, last_reset_at: new Date().toISOString() });
             
-            showMessage(result.message); // Messaggio da GAS: "Voti e Presenze resettati. Log salvato."
+            if (settingsUpdateError) throw new Error("Errore aggiornamento timestamp reset.");
+
+            showMessage("Voti e Presenze resettati. Log salvato con successo.");
             
+            // Forziamo il reset dello stato locale per l'admin
+            hasVotedInCurrentRound = false;
+            fetchSettingsAndVotes();
+
         } catch (e) {
-            console.error("Errore nel reset dei voti: ", e);
-            showMessage("Errore nel reset dei voti. Riprova.", true);
+            console.error("Errore nel reset dei voti: ", e.message);
+            showMessage(`Errore: ${e.message}`, true);
         }
     }
     
@@ -492,17 +502,21 @@
         mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento lista presenti...</p>';
 
         try {
-            const attendeesData = await fetchFromGAS('get_attendees');
-            const data = attendeesData.data || [];
+            const { data, error } = await supabase
+                .from('attendees')
+                .select('nome, cognome, created_at')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
             
             let listHtml = data.length === 0 
                 ? '<p class="text-center text-gray-500 p-4">Nessun docente registrato finora.</p>'
                 : `<ul class="log-list divide-y divide-gray-200">
-                    ${data.reverse().map(row => { // Reverse per mostrare i più recenti in alto
+                    ${data.map(row => {
                         return `
                             <li class="p-3 flex justify-between items-center text-sm">
-                                <span class="font-semibold text-gray-900">${row[3]} ${row[2]}</span>
-                                <span class="text-gray-500 text-xs">${formatTimestamp(row[0])}</span>
+                                <span class="font-semibold text-gray-900">${row.cognome} ${row.nome}</span>
+                                <span class="text-gray-500 text-xs">${formatTimestamp(row.created_at)}</span>
                             </li>
                         `;
                     }).join('')}
@@ -517,11 +531,11 @@
             `;
             document.getElementById('back-to-vote-btn').addEventListener('click', () => {
                 isViewingLog = false;
-                renderApp();
+                fetchSettingsAndVotes();
             });
 
         } catch (e) {
-            console.error("Errore nel caricamento lista presenti:", e);
+            console.error("Errore nel caricamento lista presenti:", e.message);
             mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento della lista.</p>';
         }
     }
@@ -532,23 +546,26 @@
         mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico delle delibere...</p>';
         
         try {
-            const logData = await fetchFromGAS('get_log');
-            const data = logData.data || [];
+            const { data, error } = await supabase
+                .from('log')
+                .select('created_at, attendees_count, favorevole, contrario, astenuto')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
             
             let logHtml = data.length === 0
                 ? '<p class="text-center text-gray-500 p-4">Nessuna votazione storica salvata finora.</p>'
                 : `<div class="log-list space-y-4">
-                    ${data.reverse().map((row, index) => { // Reverse per mostrare i più recenti in alto
-                        // Colonna: [0]timestamp, [1]attendees, [2]favorevole, [3]contrario, [4]astenuto
-                        const totalVoti = row[2] + row[3] + row[4];
+                    ${data.map((row, index) => { 
+                        const totalVoti = row.favorevole + row.contrario + row.astenuto;
                         return `
                             <div class="p-3 border rounded-lg shadow-sm bg-white">
-                                <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${data.length - index} - Voti: ${totalVoti} / Presenti: ${row[1] || 'N/A'}</p>
-                                <p class="text-xs text-gray-500 mb-2">${formatTimestamp(row[0])}</p>
+                                <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${data.length - index} - Voti: ${totalVoti} / Presenti: ${row.attendees_count || 'N/A'}</p>
+                                <p class="text-xs text-gray-500 mb-2">${formatTimestamp(row.created_at)}</p>
                                 <div class="grid grid-cols-3 gap-1 text-xs font-semibold">
-                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${row[2]}</span>
-                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${row[3]}</span>
-                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${row[4]}</span>
+                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${row.favorevole}</span>
+                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${row.contrario}</span>
+                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${row.astenuto}</span>
                                 </div>
                             </div>
                         `;
@@ -564,11 +581,11 @@
             `;
             document.getElementById('back-to-vote-btn').addEventListener('click', () => {
                 isViewingLog = false;
-                renderApp();
+                fetchSettingsAndVotes();
             });
 
         } catch (e) {
-            console.error("Errore nel caricamento log storico:", e);
+            console.error("Errore nel caricamento log storico:", e.message);
             mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento del log storico.</p>';
         }
     }
@@ -580,23 +597,7 @@
         
         mainContentEl.innerHTML = ''; 
 
-        // Se è un utente Admin, mostra solo l'interfaccia di benvenuto Admin
-        if (isAdminRole) {
-            mainContentEl.innerHTML = `
-                <h2 class="text-3xl font-extrabold text-green-600 text-center mb-6">Pannello di Controllo Pronto</h2>
-                <p class="text-center text-gray-700">Utilizza i pulsanti nel pannello grigio sottostante per gestire il codice di accesso e le votazioni.</p>
-                <div class="p-4 mt-4 bg-gray-100 rounded-lg">
-                    <p class="font-semibold">Stato Attuale:</p>
-                    <p class="text-sm text-gray-600">Votazione: <span id="admin-render-voting-status" class="font-bold">${isVotingActive ? 'ATTIVA' : 'DISATTIVA'}</span></p>
-                    <p class="text-sm text-gray-600">Codice richiesto: <span id="admin-render-code" class="font-bold">${requiredCode || 'Nessuno'}</span></p>
-                </div>
-            `;
-            return;
-        }
-
-        // Logica per gli utenti Docenti (Registrazione o Voto)
         if (!isRegistered) {
-            checkRegistrationStatus(); // Riprova il check ad ogni render
             renderRegistrationPage(); 
         } else {
             renderVotingPage(); 
@@ -604,14 +605,12 @@
     }
 
     function renderRegistrationPage() {
-        // Preserva i valori attuali dei campi prima di ricreare il DOM
-        // (Nota: in questa versione non c'è più bisogno di preservare, ma il codice rimane)
         const savedNome = document.getElementById('nome')?.value || '';
         const savedCognome = document.getElementById('cognome')?.value || '';
         const savedCodice = document.getElementById('codice')?.value || '';
         
         const codeStatus = requiredCode 
-            ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO. Inserisci il codice comunicato.</p>'
+            ? `<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO: ${requiredCode}.</p>`
             : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice di accesso NON ancora impostato dall\'amministratore.</p>';
 
         mainContentEl.innerHTML = `
@@ -619,7 +618,7 @@
                 <span class="text-blue-600">Registro</span> Presenze Collegio
             </h2>
             <div class="p-3 mb-4 rounded-xl bg-gray-50 border border-gray-200">
-                <p class="text-sm text-gray-600 text-center">ID Utente: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || 'Caricamento...'}</span></p>
+                <p class="text-sm text-gray-600 text-center">ID Dispositivo: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || 'Caricamento...'}</span></p>
             </div>
             ${isRegistered ? 
                 '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata. Vai al voto!</p>'
@@ -639,7 +638,6 @@
     }
 
     function renderVotingPage() {
-        // ... (Logica di rendering Pagina Votazione)
         const statusClass = isVotingActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
         const statusText = isVotingActive ? 'Votazione Attiva: Esprimi il tuo voto.' : 'Votazione Chiusa: Attendi l\'attivazione.';
         const disabledClass = isVotingActive && !hasVotedInCurrentRound ? '' : 'opacity-50 cursor-not-allowed';
@@ -649,7 +647,6 @@
         if (hasVotedInCurrentRound) {
             voteMessage = '<p class="text-center text-sm text-yellow-700 p-2 bg-yellow-50 rounded-lg">Hai già votato per la mozione corrente.</p>';
         }
-
 
         mainContentEl.innerHTML = `
             <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
@@ -672,30 +669,19 @@
                     Astenuto (${votingResults.Astenuto})
                 </button>
             </div>
-            
-            <div class="mt-8 pt-4 border-t border-gray-200">
-                <h3 class="text-lg font-bold text-gray-800 mb-2 text-center">Risultati Aggregati in Tempo Reale</h3>
-                <div class="grid grid-cols-3 gap-2 text-center font-bold">
-                    <div class="p-2 bg-green-100 rounded-lg">Favorevole: ${votingResults.Favorevole}</div>
-                    <div class="p-2 bg-red-100 rounded-lg">Contrario: ${votingResults.Contrario}</div>
-                    <div class="p-2 bg-yellow-100 rounded-lg">Astenuto: ${votingResults.Astenuto}</div>
-                </div>
-                <p class="text-sm text-gray-500 text-center mt-2">Totale Voti: ${votingResults.Favorevole + votingResults.Contrario + votingResults.Astenuto}</p>
-            </div>
         `;
-        
-        document.querySelectorAll('.vote-btn').forEach(button => {
+        // Listener per i pulsanti di voto
+        mainContentEl.querySelectorAll('.vote-btn').forEach(button => {
             button.addEventListener('click', (e) => {
-                if (!button.disabled) {
+                if (!e.target.disabled) {
                     handleVote(e.target.dataset.vote);
                 }
             });
         });
     }
 
-    // Avvia l'app
-    window.onload = initApp;
+    // Avvia l'app al caricamento
+    document.addEventListener('DOMContentLoaded', initApp);
 </script>
-
 </body>
 </html>
