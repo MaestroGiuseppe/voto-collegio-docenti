@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -111,25 +111,27 @@
 <!-- Script Logica Applicativa (Supabase) -->
 <script>
     // --- CONFIGURAZIONE SUPABASE ---
-    // Devi inserire l'URL del tuo progetto Supabase e la chiave anon pubblica.
+    // Questi valori sono stati inseriti dall'utente e devono essere corretti
     const SUPABASE_URL = 'https://fiwxcvafquxhkmulivgp.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRF6So4PYRKCW0gMQuNJ16PvDt8'; // Chiave anon pubblica inserita
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRF6So4PYRKCW0gMQuNJ16PvDt8'; 
 
     // --- INIZIALIZZAZIONE ---
     let supabase;
     
     try {
-        if (SUPABASE_ANON_KEY === 'LA_TUA_CHIAVE_ANON_PUBBLICA_REALE' || !SUPABASE_ANON_KEY) {
-            // Questo blocco viene attivato se la chiave è il placeholder.
+        if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'LA_TUA_CHIAVE_ANON_PUBBLICA_REALE') {
             throw new Error("Errore: Chiave API Supabase non configurata.");
         }
+        // Inizializza il client Supabase
         supabase = supabaseClient.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log("Supabase Client inizializzato con successo."); // Messaggio di conferma
+        
     } catch (e) {
         document.getElementById('main-content').innerHTML = `
             <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE DI CONFIGURAZIONE</h2>
-            <p class="text-gray-700 mb-4 text-center">Per favore, inserisci la chiave API Supabase anonima nel file index.html (riga 208).</p>
+            <p class="text-gray-700 mb-4 text-center">Impossibile connettersi a Supabase. Controlla il link e la chiave API. (${e.message})</p>
         `;
-        throw new Error("Supabase non inizializzato: Chiave mancante.");
+        throw new Error("Supabase non inizializzato.");
     }
     
     // Stato dell'Applicazione
@@ -141,7 +143,7 @@
     let requiredCode = null; 
     let isViewingLog = false; 
     let isAdminRole = false; 
-    let lastResetId = 0; // Usato per tracciare il reset (Row ID della tabella settings)
+    let lastResetId = 0;
 
     // Elementi UI
     const mainContentEl = document.getElementById('main-content');
@@ -258,14 +260,15 @@
             .limit(1)
             .single();
 
-        if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 = No Rows Found
+        if (settingsError && settingsError.code !== 'PGRST116') { 
             console.error("Errore fetch settings:", settingsError);
             return;
         }
 
         if (settingsData) {
             isVotingActive = settingsData.is_voting_active;
-            requiredCode = settingsData.required_code ? String(settingsData.required_code) : null;
+            // Garantisce che requiredCode sia una stringa per il confronto
+            requiredCode = settingsData.required_code ? String(settingsData.required_code) : null; 
             lastResetId = settingsData.id;
         }
 
@@ -317,7 +320,6 @@
         }
         
         // 2. Controlla se ha votato (in 'votes')
-        // Usiamo lastResetId per vedere se il voto è successivo all'ultimo reset
         const { data: voteData, error: voteError } = await supabase
             .from('votes')
             .select('id')
@@ -327,8 +329,6 @@
         if (voteError) {
             console.error("Errore check voto:", voteError);
         } else {
-            // Per il momento, Supabase gestisce automaticamente il "voto in sessione" 
-            // perché i vecchi voti vengono cancellati al reset.
             hasVotedInCurrentRound = voteData.length > 0;
         }
     }
@@ -356,14 +356,13 @@
             return;
         }
         
-        // 1. Check if user is already registered (optional, handled by RLS)
-        // 2. Insert new attendee
+        // Insert new attendee
         const { error } = await supabase
             .from('attendees')
             .insert({ user_id: userId, nome: nome, cognome: cognome, codice: codice });
             
         if (error) {
-            if (error.code === '23505') { // 23505 è codice per violazione di UNIQUE constraint
+            if (error.code === '23505') { // Violazione di UNIQUE constraint
                 isRegistered = true;
                 showMessage("Sei già stato registrato. Passaggio alla votazione.");
                 renderApp();
@@ -414,17 +413,17 @@
         if (!isAdminRole) return;
         
         const newCode = document.getElementById('admin-set-code').value.trim();
-        // Permettiamo di impostare anche un codice vuoto (per disattivare la registrazione)
+        const codeToSave = newCode || null; // Salva NULL se vuoto
 
         const { error } = await supabase
             .from('settings')
-            .upsert({ id: lastResetId || 1, required_code: newCode });
+            .upsert({ id: lastResetId || 1, required_code: codeToSave });
 
         if (error) {
             console.error("Errore nell'aggiornamento del codice Admin: ", error);
             showMessage("Errore nel salvataggio del codice.", true);
         } else {
-            showMessage(`Codice impostato a ${newCode || 'VUOTO'}.`);
+            showMessage(`Codice impostato a ${codeToSave || 'VUOTO'}.`);
         }
     }
 
