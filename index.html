@@ -3,698 +3,731 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Votazione Collegio Docenti - Supabase</title>
-    <!-- Caricamento di Tailwind CSS per lo styling -->
+    <title>Voto Collegio Docenti</title>
+    <!-- Carica Tailwind CSS (per lo styling) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inclusione della libreria Supabase client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
-    <style>
-        /* Stile personalizzato per il corpo e i pulsanti */
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 2rem 1rem;
-        }
-        .container-card {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 1.5rem;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            max-width: 480px;
-            width: 95%;
-            margin-bottom: 1.5rem;
-        }
-        .vote-btn {
-            transition: all 0.2s;
-            transform: scale(1.0);
-        }
-        .vote-btn:hover:not(.opacity-50) {
-            transform: scale(1.05);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-        }
-        .vote-btn:active:not(.opacity-50) {
-            transform: scale(0.98);
-        }
-        .log-list {
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #e5e7eb;
-            border-radius: 0.5rem;
-            padding: 0.5rem;
-        }
-    </style>
-    <!-- Configurazione del Font Inter -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                }
-            }
-        }
+    <!-- Carica Lucide Icons (per le icone) -->
+    <script type="module">
+        import { createIcons, CheckCircle, XCircle, Users, Lock, Unlock, Zap, TrendingUp, TrendingDown, RefreshCw, LogIn, LogOut, Code, Settings } from 'https://cdn.jsdelivr.net/npm/lucide-esm@latest/dist/lucide-esm.js';
+        document.addEventListener('DOMContentLoaded', () => {
+            createIcons({ icons: { CheckCircle, XCircle, Users, Lock, Unlock, Zap, TrendingUp, TrendingDown, RefreshCw, LogIn, LogOut, Code, Settings } });
+        });
     </script>
+    <style>
+        /* Imposta il font Inter come predefinito */
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        /* Stile di base per il contenitore dell'app */
+        .app-container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+        /* Stili per le schede di voto */
+        .vote-card {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            @apply shadow-lg hover:shadow-xl;
+        }
+        .vote-card:hover { transform: translateY(-3px); }
+        .vote-card.voted { border: 4px solid #3b82f6; }
+        .pulse-active { animation: pulse-active 1.5s infinite; }
+        @keyframes pulse-active {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+        }
+        .text-shadow { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2); }
+        /* Stile per i messaggi di stato */
+        #status-message {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        #status-message.show { opacity: 1; }
+        /* Stile per l'area amministrativa (nascondi per default) */
+        #admin-area { display: none; }
+    </style>
 </head>
-<body>
+<body class="bg-gray-50 min-h-screen">
 
-<!-- CONTENITORE PRINCIPALE (Registrazione/Votazione/Log) -->
-<div id="app-container" class="container-card">
-    <div id="main-content">
-        <p class="text-center text-gray-500">Inizializzazione Supabase...</p>
-    </div>
-</div>
+    <div id="status-message" class="p-3 rounded-xl shadow-2xl text-white bg-green-600"></div>
 
-<!-- PANNELLO ADMIN SEPARATO -->
-<div id="admin-panel" class="hidden bg-gray-100 p-6 rounded-xl shadow-lg border border-gray-300 max-w-[480px] w-[95%]">
-    <h3 class="text-xl font-bold text-red-700 mb-4 border-b pb-2">Pannello di Controllo Admin Separato</h3>
-    <p class="text-sm text-gray-700 mb-4">ID Admin: <span id="admin-user-id" class="font-mono text-xs bg-yellow-200 p-1 rounded"></span>. Usare questo link per la gestione.</p>
-    
-    <!-- SEZIONE GESTIONE CODICE -->
-    <h4 class="text-lg font-bold text-gray-800 mt-4 border-t pt-4">1. Gestione Codice Accesso</h4>
-    <p class="text-sm text-gray-700 mb-2">Codice Corrente Richiesto: <span id="current-required-code" class="font-mono text-sm bg-blue-100 p-1 rounded font-bold">Nessuno</span></p>
-    <input type="text" id="admin-set-code" placeholder="Nuovo Codice Univoco (es. 1234)" class="w-full p-2 border border-gray-400 rounded-lg text-sm mb-2" />
-    <button id="update-code-btn" class="w-full py-2 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md">
-        Imposta Codice e Abilita Registrazione
-    </button>
-
-    <!-- SEZIONE GESTIONE VOTO -->
-    <h4 class="text-lg font-bold text-red-700 mt-6 border-t pt-4">2. Gestione Votazione</h4>
-    <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold">DISATTIVO</span>.</p>
-    
-    <div class="space-y-2 mt-4">
-        <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md">
-            Attiva Votazione
-        </button>
-        <button id="reset-results-btn" class="w-full py-2 px-4 rounded-xl text-red-700 border border-red-700 bg-white hover:bg-red-50 transition duration-150 ease-in-out font-semibold shadow-sm">
-            Resetta Tutti i Voti (Salva Log)
-        </button>
-    </div>
-
-    <!-- SEZIONE LOG E PRESENZE -->
-    <h4 class="text-lg font-bold text-gray-800 mt-6 border-t pt-4">3. Log e Tracciabilità</h4>
-    <div class="grid grid-cols-2 gap-2 mt-4">
-        <button id="show-attendees-btn" class="py-2 px-2 rounded-xl text-blue-700 border border-blue-700 bg-white hover:bg-blue-50 transition duration-150 ease-in-out font-semibold text-sm shadow-sm">
-            Mostra Lista Presenti
-        </button>
-        <button id="show-deliberations-btn" class="py-2 px-2 rounded-xl text-purple-700 border border-purple-700 bg-white hover:bg-purple-50 transition duration-150 ease-in-out font-semibold text-sm shadow-sm">
-            Mostra Log Storico
-        </button>
-    </div>
-</div>
-
-<!-- Script Logica Applicativa (Supabase) -->
-<script>
-    // --- CONFIGURAZIONE SUPABASE ---
-    // Questi valori sono stati inseriti dall'utente e devono essere corretti
-    const SUPABASE_URL = 'https://fiwxcvafquxhkmulivgp.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRF6So4PYRKCW0gMQuNJ16PvDt8'; 
-
-    // --- INIZIALIZZAZIONE ---
-    let supabaseClient; // Rinominata per evitare conflitto con l'oggetto globale 'supabase'
-    
-    try {
-        if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'LA_TUA_CHIAVE_ANON_PUBBLICA_REALE') {
-            throw new Error("Errore: Chiave API Supabase non configurata.");
-        }
-        // Inizializza il client Supabase usando l'oggetto globale 'supabase'
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log("Supabase Client inizializzato con successo."); // Messaggio di conferma
-        
-    } catch (e) {
-        document.getElementById('main-content').innerHTML = `
-            <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE DI CONFIGURAZIONE</h2>
-            <p class="text-gray-700 mb-4 text-center">Impossibile connettersi a Supabase. Controlla il link e la chiave API. (${e.message})</p>
-        `;
-        throw new Error("Supabase non inizializzato.");
-    }
-    
-    // Stato dell'Applicazione
-    let userId = null;
-    let isRegistered = false;
-    let isVotingActive = false;
-    let hasVotedInCurrentRound = false;
-    let votingResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
-    let requiredCode = null; 
-    let isViewingLog = false; 
-    let isAdminRole = false; 
-    let lastResetId = 0;
-
-    // Elementi UI
-    const mainContentEl = document.getElementById('main-content');
-    const adminPanelEl = document.getElementById('admin-panel');
-    const toggleVotingBtn = document.getElementById('toggle-voting-btn');
-    const resetResultsBtn = document.getElementById('reset-results-btn');
-    const updateCodeBtn = document.getElementById('update-code-btn'); 
-    const adminUserIdEl = document.getElementById('admin-user-id');
-    const votingStatusTextEl = document.getElementById('voting-status-text');
-    const currentRequiredCodeEl = document.getElementById('current-required-code'); 
-    const showAttendeesBtn = document.getElementById('show-attendees-btn'); 
-    const showDeliberationsBtn = document.getElementById('show-deliberations-btn'); 
-
-    // --- FUNZIONI DI UTILITÀ ---
-    
-    // Funzione per generare un ID Utente casuale e persistente
-    function getUserId() {
-        let uid = localStorage.getItem('votingAppUserId');
-        if (!uid) {
-            uid = crypto.randomUUID();
-            localStorage.setItem('votingAppUserId', uid);
-        }
-        return uid;
-    }
-
-    function getUrlParameter(name) {
-        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
-        const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-        const results = regex.exec(location.search);
-        return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-    }
-
-    function formatTimestamp(timestampStr) {
-        if (!timestampStr) return 'N/A';
-        const date = new Date(timestampStr);
-        return date.toLocaleDateString('it-IT', {
-            year: 'numeric', month: '2-digit', day: '2-digit', 
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-    }
-
-    function showMessage(message, isError = false) {
-        const type = isError ? 'bg-red-500' : 'bg-green-500';
-        const messageEl = document.createElement('div');
-        messageEl.className = `fixed top-5 left-1/2 transform -translate-x-1/2 p-3 rounded-lg text-white font-semibold ${type} shadow-xl z-50 transition-opacity duration-300`;
-        messageEl.textContent = message;
-        document.body.appendChild(messageEl);
-
-        setTimeout(() => {
-            messageEl.style.opacity = '0';
-            messageEl.addEventListener('transitionend', () => messageEl.remove());
-        }, 3000);
-    }
-    
-    // --- FUNZIONI DI INIZIALIZZAZIONE ---
-
-    function initApp() {
-        userId = getUserId();
-        isAdminRole = getUrlParameter('role') === 'admin';
-        
-        const adminIdDisplay = userId.substring(0, 10) + '...';
-        adminUserIdEl.textContent = adminIdDisplay;
-
-        if (isAdminRole) {
-            adminPanelEl.classList.remove('hidden');
-        }
-        
-        // Inizializza i listener per i pulsanti Admin
-        if (adminPanelEl) { 
-            toggleVotingBtn.addEventListener('click', handleAdminToggle);
-            resetResultsBtn.addEventListener('click', handleResetResults);
-            updateCodeBtn.addEventListener('click', handleAdminCodeUpdate); 
-            showAttendeesBtn.addEventListener('click', showAttendeesList); 
-            showDeliberationsBtn.addEventListener('click', showDeliberationsLog); 
-        }
-
-        // Avvia l'ascolto in tempo reale (Supabase Realtime)
-        startRealtimeListening();
-    }
-    
-    // ASCOLTO IN TEMPO REALE CON SUPABASE
-    function startRealtimeListening() {
-        // Fallback per garantire che l'app non si blocchi se il Realtime fallisce
-        try {
-            // 1. Ascolta i cambiamenti di stato (per admin)
-            supabaseClient
-                .channel('settings_changes')
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, payload => {
-                    // Aggiorna lo stato globale quando le impostazioni cambiano
-                    fetchSettingsAndVotes();
-                })
-                .subscribe();
-
-            // 2. Ascolta i nuovi voti (per tutti)
-            supabaseClient
-                .channel('vote_changes')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendees' }, payload => {
-                    // Se un nuovo utente si registra, aggiorna il conteggio delle presenze
-                    fetchSettingsAndVotes();
-                })
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, payload => {
-                    // Aggiorna i risultati in tempo reale
-                    fetchSettingsAndVotes();
-                })
-                .subscribe();
-
-            console.log("Supabase Realtime Abilitato.");
-        } catch (error) {
-            console.error("Supabase Realtime non disponibile. Esecuzione in modalità polling.");
-            // Se Realtime fallisce, usiamo un fallback di polling
-            startPollingFallback();
-        }
-
-        // Primo fetch per popolare l'interfaccia
-        fetchSettingsAndVotes();
-    }
-
-    function startPollingFallback() {
-         setInterval(fetchSettingsAndVotes, 2000); // Polling ogni 2 secondi
-    }
-
-
-    async function fetchSettingsAndVotes() {
-        // Fetch Settings
-        const { data: settingsData, error: settingsError } = await supabaseClient
-            .from('settings')
-            .select('is_voting_active, required_code, id')
-            .limit(1)
-            .single();
-
-        if (settingsError && settingsError.code !== 'PGRST116') { 
-            console.error("Errore fetch settings:", settingsError);
-            return;
-        }
-
-        if (settingsData) {
-            isVotingActive = settingsData.is_voting_active;
-            // Garantisce che requiredCode sia una stringa per il confronto
-            requiredCode = settingsData.required_code ? String(settingsData.required_code) : null; 
-            lastResetId = settingsData.id;
-        }
-
-        // Fetch Votes Count
-        const { data: votesData, error: votesError } = await supabaseClient
-            .rpc('get_vote_counts');
-            
-        if (votesError) {
-            console.error("Errore fetch votes:", votesError);
-            return;
-        }
-        
-        // Aggiorna i risultati
-        votingResults = {
-            Favorevole: votesData.find(r => r.vote === 'Favorevole')?.count || 0,
-            Contrario: votesData.find(r => r.vote === 'Contrario')?.count || 0,
-            Astenuto: votesData.find(r => r.vote === 'Astenuto')?.count || 0,
-        };
-        
-        // Aggiorna lo stato locale dell'utente
-        await checkUserVotedStatus();
-
-        // Rendering dell'interfaccia
-        renderApp();
-
-        // Aggiorna il pannello Admin
-        if (isAdminRole) {
-            votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
-            votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
-            toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
-            toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
-            
-            currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
-        }
-    }
-
-    async function checkUserVotedStatus() {
-        // 1. Controlla lo stato di registrazione (registrato in 'attendees')
-        const { data: regData, error: regError } = await supabaseClient
-            .from('attendees')
-            .select('id')
-            .eq('user_id', userId)
-            .limit(1);
-
-        if (regError) {
-            console.error("Errore check registrazione:", regError);
-        } else {
-            isRegistered = regData && regData.length > 0;
-        }
-        
-        // 2. Controlla se ha votato (in 'votes')
-        const { data: voteData, error: voteError } = await supabaseClient
-            .from('votes')
-            .select('id')
-            .eq('user_id', userId)
-            .limit(1);
-
-        if (voteError) {
-            console.error("Errore check voto:", voteError);
-        } else {
-            hasVotedInCurrentRound = voteData && voteData.length > 0;
-        }
-    }
-    
-    // --- FUNZIONI DI AZIONE DELL'UTENTE ---
-
-    async function handleRegistration() {
-        const nome = document.getElementById('nome').value.trim();
-        const cognome = document.getElementById('cognome').value.trim();
-        const codice = document.getElementById('codice').value.trim();
-
-        if (!nome || !cognome || !codice) {
-            showMessage("Per favore, compila tutti i campi.", true);
-            return;
-        }
-
-        if (!requiredCode) {
-            showMessage("L'amministratore non ha ancora impostato il codice di accesso.", true);
-            return;
-        }
-
-        // Confronto di stringhe corretto
-        if (codice !== requiredCode) {
-            showMessage("Codice univoco errato. Per favore, verifica.", true);
-            return;
-        }
-        
-        // Insert new attendee
-        const { error } = await supabaseClient
-            .from('attendees')
-            .insert({ user_id: userId, nome: nome, cognome: cognome, codice: codice });
-            
-        if (error) {
-            if (error.code === '23505') { // Violazione di UNIQUE constraint
-                isRegistered = true;
-                showMessage("Sei già stato registrato. Passaggio alla votazione.");
-                renderApp();
-                return;
-            }
-            console.error("Errore durante la registrazione: ", error);
-            showMessage("Errore nel salvataggio della registrazione. Riprova.", true);
-        } else {
-            isRegistered = true;
-            showMessage(`Registrazione di ${nome} ${cognome} completata! Benvenuto/a.`);
-            renderApp();
-        }
-    }
-
-    async function handleVote(choice) {
-        if (!isVotingActive) {
-            showMessage("La votazione è attualmente disattivata dall'amministrazione.", true);
-            return;
-        }
-        if (hasVotedInCurrentRound) {
-            showMessage("Hai già espresso il tuo voto in questa sessione. Attendi il prossimo voto.", true);
-            return;
-        }
-
-        const { error } = await supabaseClient
-            .from('votes')
-            .insert({ user_id: userId, vote: choice });
-
-        if (error) {
-            if (error.code === '23505') { // Violazione UNIQUE
-                hasVotedInCurrentRound = true;
-                showMessage("Hai già votato per questa mozione.", true);
-                renderApp();
-                return;
-            }
-            console.error("Errore durante la votazione: ", error);
-            showMessage("Errore durante l'invio del voto. Riprova.", true);
-        } else {
-            hasVotedInCurrentRound = true;
-            showMessage(`Voto espresso: ${choice}. Grazie!`);
-            // Realtime listener aggiorna l'interfaccia automaticamente
-        }
-    }
-    
-    // --- FUNZIONI DI AZIONE ADMIN ---
-    
-    async function handleAdminCodeUpdate() {
-        if (!isAdminRole) return;
-        
-        const newCode = document.getElementById('admin-set-code').value.trim();
-        const codeToSave = newCode || null; // Salva NULL se vuoto
-
-        const { error } = await supabaseClient
-            .from('settings')
-            .upsert({ id: lastResetId || 1, required_code: codeToSave });
-
-        if (error) {
-            console.error("Errore nell'aggiornamento del codice Admin: ", error);
-            showMessage("Errore nel salvataggio del codice.", true);
-        } else {
-            showMessage(`Codice impostato a ${codeToSave || 'VUOTO'}.`);
-        }
-    }
-
-    async function handleAdminToggle() {
-        if (!isAdminRole) return; 
-        
-        const newState = !isVotingActive;
-        
-        const { error } = await supabaseClient
-            .from('settings')
-            .upsert({ id: lastResetId || 1, is_voting_active: newState });
-
-        if (error) {
-            console.error("Errore nel toggle Admin: ", error);
-            showMessage("Errore nel cambio stato votazione.", true);
-        } else {
-            showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`);
-        }
-    }
-
-    async function handleResetResults() {
-        if (!isAdminRole) return; 
-
-        try {
-            // 1. Ottieni il conteggio finale e i presenti
-            const { data: finalVotes, error: votesError } = await supabaseClient.rpc('get_vote_counts');
-            const { count: attendeesCount, error: attendeesError } = await supabaseClient.from('attendees').select('*', { count: 'exact', head: true });
-
-            if (votesError || attendeesError) {
-                throw new Error("Errore nel recupero dei conteggi finali.");
-            }
-
-            // 2. Salva nel Log Storico
-            const logEntry = {
-                attendees_count: attendeesCount,
-                favorevole: finalVotes.find(r => r.vote === 'Favorevole')?.count || 0,
-                contrario: finalVotes.find(r => r.vote === 'Contrario')?.count || 0,
-                astenuto: finalVotes.find(r => r.vote === 'Astenuto')?.count || 0,
-            };
-            const { error: logError } = await supabaseClient.from('log').insert(logEntry);
-            if (logError) throw new Error("Errore nel salvataggio del log storico.");
-
-            // 3. Cancella i voti
-            const { error: deleteVotesError } = await supabaseClient.from('votes').delete().neq('id', 0); // Cancella tutto
-            if (deleteVotesError) throw new Error("Errore nella cancellazione dei voti.");
-            
-            // 4. Cancella i presenti (per la prossima riunione)
-            const { error: deleteAttendeesError } = await supabaseClient.from('attendees').delete().neq('id', 0);
-            if (deleteAttendeesError) throw new Error("Errore nella cancellazione dei presenti.");
-            
-            // 5. Aggiorna lo stato Admin (per forzare il refresh locale)
-            const { error: settingsUpdateError } = await supabaseClient
-                .from('settings')
-                .upsert({ id: lastResetId || 1, last_reset_at: new Date().toISOString() });
-            
-            if (settingsUpdateError) throw new Error("Errore aggiornamento timestamp reset.");
-
-            showMessage("Voti e Presenze resettati. Log salvato con successo.");
-            
-            // Forziamo il reset dello stato locale per l'admin
-            hasVotedInCurrentRound = false;
-            fetchSettingsAndVotes();
-
-        } catch (e) {
-            console.error("Errore nel reset dei voti: ", e.message);
-            showMessage(`Errore: ${e.message}`, true);
-        }
-    }
-    
-    // --- FUNZIONI DI VISUALIZZAZIONE ADMIN ---
-
-    async function showAttendeesList() {
-        if (!isAdminRole) return;
-        isViewingLog = true;
-        mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento lista presenti...</p>';
-
-        try {
-            const { data, error } = await supabaseClient
-                .from('attendees')
-                .select('nome, cognome, created_at')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            
-            let listHtml = data.length === 0 
-                ? '<p class="text-center text-gray-500 p-4">Nessun docente registrato finora.</p>'
-                : `<ul class="log-list divide-y divide-gray-200">
-                    ${data.map(row => {
-                        return `
-                            <li class="p-3 flex justify-between items-center text-sm">
-                                <span class="font-semibold text-gray-900">${row.cognome} ${row.nome}</span>
-                                <span class="text-gray-500 text-xs">${formatTimestamp(row.created_at)}</span>
-                            </li>
-                        `;
-                    }).join('')}
-                </ul>`;
-
-            mainContentEl.innerHTML = `
-                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Lista Docenti Presenti (${data.length})</h2>
-                ${listHtml}
-                <button id="back-to-vote-btn" class="w-full mt-4 py-2 px-4 rounded-xl text-white font-semibold bg-blue-500 hover:bg-blue-600">
-                    Torna alla Votazione
+    <header class="bg-blue-600 text-white shadow-xl">
+        <div class="app-container py-4 flex flex-col md:flex-row justify-between items-center">
+            <h1 class="text-3xl font-bold tracking-tight text-shadow">
+                Voto Collegio Docenti
+            </h1>
+            <div id="auth-status" class="mt-2 md:mt-0 text-sm flex items-center space-x-2">
+                <span id="user-info" class="font-medium"></span>
+                <button onclick="handleLogout()" id="logout-button" class="bg-blue-700 hover:bg-blue-800 p-2 rounded-full transition duration-150 transform hover:scale-105" title="Esci">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
                 </button>
-            `;
-            document.getElementById('back-to-vote-btn').addEventListener('click', () => {
-                isViewingLog = false;
-                fetchSettingsAndVotes();
-            });
-
-        } catch (e) {
-            console.error("Errore nel caricamento lista presenti:", e.message);
-            mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento della lista.</p>';
-        }
-    }
-
-    async function showDeliberationsLog() {
-        if (!isAdminRole) return;
-        isViewingLog = true;
-        mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico delle delibere...</p>';
-        
-        try {
-            const { data, error } = await supabaseClient
-                .from('log')
-                .select('created_at, attendees_count, favorevole, contrario, astenuto')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            
-            let logHtml = data.length === 0
-                ? '<p class="text-center text-gray-500 p-4">Nessuna votazione storica salvata finora.</p>'
-                : `<div class="log-list space-y-4">
-                    ${data.map((row, index) => { 
-                        const totalVoti = row.favorevole + row.contrario + row.astenuto;
-                        return `
-                            <div class="p-3 border rounded-lg shadow-sm bg-white">
-                                <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${data.length - index} - Voti: ${totalVoti} / Presenti: ${row.attendees_count || 'N/A'}</p>
-                                <p class="text-xs text-gray-500 mb-2">${formatTimestamp(row.created_at)}</p>
-                                <div class="grid grid-cols-3 gap-1 text-xs font-semibold">
-                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${row.favorevole}</span>
-                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${row.contrario}</span>
-                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${row.astenuto}</span>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>`;
-
-            mainContentEl.innerHTML = `
-                <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-4">Log Storico Votazioni (${data.length})</h2>
-                ${logHtml}
-                <button id="back-to-vote-btn" class="w-full mt-4 py-2 px-4 rounded-xl text-white font-semibold bg-blue-500 hover:bg-blue-600">
-                    Torna alla Votazione
-                </button>
-            `;
-            document.getElementById('back-to-vote-btn').addEventListener('click', () => {
-                isViewingLog = false;
-                fetchSettingsAndVotes();
-            });
-
-        } catch (e) {
-            console.error("Errore nel caricamento log storico:", e.message);
-            mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento del log storico.</p>';
-        }
-    }
-
-    // --- FUNZIONE DI RENDERING (Mostra la pagina corretta) ---
-    
-    function renderApp() {
-        if (isViewingLog) return; 
-        
-        mainContentEl.innerHTML = ''; 
-
-        if (!isRegistered) {
-            renderRegistrationPage(); 
-        } else {
-            renderVotingPage(); 
-        }
-    }
-
-    function renderRegistrationPage() {
-        const savedNome = document.getElementById('nome')?.value || '';
-        const savedCognome = document.getElementById('cognome')?.value || '';
-        const savedCodice = document.getElementById('codice')?.value || '';
-        
-        const codeStatus = requiredCode 
-            ? `<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO: ${requiredCode}.</p>`
-            : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice di accesso NON ancora impostato dall\'amministratore.</p>';
-
-        mainContentEl.innerHTML = `
-            <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
-                <span class="text-blue-600">Registro</span> Presenze Collegio
-            </h2>
-            <div class="p-3 mb-4 rounded-xl bg-gray-50 border border-gray-200">
-                <p class="text-sm text-gray-600 text-center">ID Dispositivo: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || 'Caricamento...'}</span></p>
             </div>
-            ${isRegistered ? 
-                '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata. Vai al voto!</p>'
-                : codeStatus
-            }
-            <div class="space-y-4">
-                <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedNome}" ${isRegistered ? 'disabled' : ''}/>
-                <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedCognome}" ${isRegistered ? 'disabled' : ''}/>
-                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedCodice}" ${isRegistered ? 'disabled' : ''}/>
+        </div>
+    </header>
+
+    <main class="app-container mt-8">
+
+        <!-- Area di Voto Pubblica -->
+        <section id="voting-area" class="bg-white p-6 md:p-10 rounded-3xl shadow-2xl border border-gray-100">
+            <h2 class="text-3xl font-extrabold text-gray-800 mb-6 text-center">Esprimi il tuo Voto</h2>
+
+            <!-- Stato Votazione -->
+            <div id="voting-status-display" class="mb-8 p-4 rounded-xl text-center shadow-inner">
+                <p id="voting-message" class="text-xl font-semibold"></p>
+                <div id="code-prompt" class="mt-4 hidden">
+                    <p class="text-sm text-gray-600 mb-2">Inserisci il tuo codice di accesso per registrarti:</p>
+                    <div class="flex justify-center space-x-2">
+                        <input type="text" id="access-code" placeholder="Codice" class="p-3 border border-gray-300 rounded-xl w-32 focus:ring-blue-500 focus:border-blue-500 text-center">
+                        <button onclick="handleLogin()" class="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition duration-150">
+                            <i data-lucide="log-in" class="w-5 h-5 inline-block mr-1"></i>Accedi
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard di Voto -->
+            <div id="vote-dashboard" class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+
+                <!-- Scheda Voto Favorevole -->
+                <div id="card-favorevole" onclick="handleVote('Favorevole')" class="vote-card p-6 flex flex-col items-center justify-center bg-green-50 border-4 border-green-200 rounded-3xl">
+                    <i data-lucide="check-circle" class="w-16 h-16 text-green-600 mb-4"></i>
+                    <h3 class="text-3xl font-bold text-green-800">Favorevole</h3>
+                </div>
+
+                <!-- Scheda Voto Contrario -->
+                <div id="card-contrario" onclick="handleVote('Contrario')" class="vote-card p-6 flex flex-col items-center justify-center bg-red-50 border-4 border-red-200 rounded-3xl">
+                    <i data-lucide="x-circle" class="w-16 h-16 text-red-600 mb-4"></i>
+                    <h3 class="text-3xl font-bold text-red-800">Contrario</h3>
+                </div>
+            </div>
+
+            <!-- Messaggio di Voto Effettuato -->
+            <div id="voted-message" class="mt-8 text-center hidden">
+                <p class="text-2xl font-semibold text-blue-600 flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-6 h-6 mr-2"></i> Il tuo voto è stato registrato.
+                </p>
+            </div>
+            
+            <!-- Pulsante di aggiornamento -->
+            <div class="mt-8 text-center">
+                 <button onclick="fetchSettingsAndVotes(true)" class="bg-gray-200 text-gray-700 p-3 rounded-xl hover:bg-gray-300 transition duration-150">
+                    <i data-lucide="refresh-cw" class="w-5 h-5 inline-block mr-1"></i> Aggiorna Risultati
+                </button>
+            </div>
+        </section>
+
+        <!-- Area Risultati in Tempo Reale -->
+        <section id="results-area" class="mt-12 bg-white p-6 md:p-10 rounded-3xl shadow-2xl border border-gray-100">
+            <h2 class="text-3xl font-extrabold text-gray-800 mb-6 text-center">Risultati in Tempo Reale</h2>
+            
+            <div id="results-dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                 
-                <button id="register-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg ${isRegistered ? 'opacity-50 cursor-not-allowed' : ''}" ${isRegistered ? 'disabled' : ''}>
-                    Registra Presenza
-                </button>
+                <!-- Totale Docenti -->
+                <div class="p-6 bg-blue-50 rounded-xl shadow-md border border-blue-200">
+                    <i data-lucide="users" class="w-8 h-8 text-blue-600 mx-auto mb-2"></i>
+                    <p class="text-sm font-medium text-blue-700">Docenti Registrati</p>
+                    <p id="attendee-count" class="text-4xl font-extrabold text-blue-800">0</p>
+                </div>
+                
+                <!-- Totale Voti -->
+                <div class="p-6 bg-gray-50 rounded-xl shadow-md border border-gray-200">
+                    <i data-lucide="zap" class="w-8 h-8 text-gray-600 mx-auto mb-2"></i>
+                    <p class="text-sm font-medium text-gray-700">Voti Totali</p>
+                    <p id="total-votes" class="text-4xl font-extrabold text-gray-800">0</p>
+                </div>
+                
+                <!-- Percentuale -->
+                <div class="p-6 bg-yellow-50 rounded-xl shadow-md border border-yellow-200">
+                    <i data-lucide="trending-up" class="w-8 h-8 text-yellow-600 mx-auto mb-2"></i>
+                    <p class="text-sm font-medium text-yellow-700">Percentuale Votanti</p>
+                    <p id="voting-percentage" class="text-4xl font-extrabold text-yellow-800">0%</p>
+                </div>
+                
+                <!-- Voti Favorevoli -->
+                <div class="col-span-1 md:col-span-3 p-6 bg-green-50 rounded-xl shadow-md border border-green-200">
+                    <i data-lucide="trending-up" class="w-8 h-8 text-green-600 mx-auto mb-2"></i>
+                    <p class="text-sm font-medium text-green-700">Voti Favorevoli</p>
+                    <p id="yes-votes" class="text-4xl font-extrabold text-green-800">0</p>
+                    <div id="yes-bar" class="h-4 mt-2 rounded-full bg-green-400 transition-all duration-500" style="width: 0%;"></div>
+                </div>
+                
+                <!-- Voti Contrari -->
+                <div class="col-span-1 md:col-span-3 p-6 bg-red-50 rounded-xl shadow-md border border-red-200">
+                    <i data-lucide="trending-down" class="w-8 h-8 text-red-600 mx-auto mb-2"></i>
+                    <p class="text-sm font-medium text-red-700">Voti Contrari</p>
+                    <p id="no-votes" class="text-4xl font-extrabold text-red-800">0</p>
+                    <div id="no-bar" class="h-4 mt-2 rounded-full bg-red-400 transition-all duration-500" style="width: 0%;"></div>
+                </div>
             </div>
-        `;
-        document.getElementById('register-btn')?.addEventListener('click', handleRegistration);
-    }
+        </section>
 
-    function renderVotingPage() {
-        const statusClass = isVotingActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
-        const statusText = isVotingActive ? 'Votazione Attiva: Esprimi il tuo voto.' : 'Votazione Chiusa: Attendi l\'attivazione.';
-        const disabledClass = isVotingActive && !hasVotedInCurrentRound ? '' : 'opacity-50 cursor-not-allowed';
-        const buttonDisabled = isVotingActive && !hasVotedInCurrentRound ? '' : 'disabled';
-        
-        let voteMessage = '';
-        if (hasVotedInCurrentRound) {
-            voteMessage = '<p class="text-center text-sm text-yellow-700 p-2 bg-yellow-50 rounded-lg">Hai già votato per la mozione corrente.</p>';
+        <!-- Area Amministrativa (Nascosta) -->
+        <section id="admin-area" class="mt-12 bg-gray-900 text-white p-6 md:p-10 rounded-3xl shadow-2xl pulse-active">
+            <h2 class="text-3xl font-extrabold mb-6 text-center">Pannello Amministratore</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                <!-- Gestione Stato Votazione -->
+                <div class="p-6 bg-gray-800 rounded-xl shadow-xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i data-lucide="settings" class="w-5 h-5 mr-2 text-yellow-400"></i> Gestione Stato Voto
+                    </h3>
+                    <p id="admin-current-status" class="mb-4 text-lg font-medium text-blue-400"></p>
+                    <div class="flex space-x-4">
+                        <button onclick="updateVotingStatus(true)" id="btn-start-vote" class="w-full bg-green-600 text-white p-3 rounded-xl hover:bg-green-700 transition duration-150 flex items-center justify-center">
+                            <i data-lucide="unlock" class="w-5 h-5 mr-2"></i> Avvia Voto
+                        </button>
+                        <button onclick="updateVotingStatus(false)" id="btn-stop-vote" class="w-full bg-red-600 text-white p-3 rounded-xl hover:bg-red-700 transition duration-150 flex items-center justify-center">
+                            <i data-lucide="lock" class="w-5 h-5 mr-2"></i> Ferma Voto
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Gestione Codice -->
+                <div class="p-6 bg-gray-800 rounded-xl shadow-xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i data-lucide="code" class="w-5 h-5 mr-2 text-yellow-400"></i> Codice di Accesso
+                    </h3>
+                    <p id="admin-current-code" class="mb-4 text-lg font-medium text-blue-400"></p>
+                    <div class="flex space-x-2">
+                        <input type="text" id="new-code-input" placeholder="Nuovo Codice (es. 1234)" class="p-3 border border-gray-600 rounded-xl w-full text-gray-900" maxlength="10">
+                        <button onclick="updateSettingsCode()" class="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition duration-150">
+                            Salva
+                        </button>
+                    </div>
+                    <button onclick="resetSystem()" class="w-full mt-4 bg-yellow-600 text-white p-3 rounded-xl hover:bg-yellow-700 transition duration-150">
+                        Reset Totale Database (⚠️ Pericolo)
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="app-container text-center text-gray-500 text-sm py-8 mt-12">
+        <p>&copy; 2025 Voto Collegio Docenti. Realizzato con Supabase e JavaScript.</p>
+    </footer>
+
+    <!-- Script di Logica -->
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/index.browser.js';
+
+        // =========================================================================
+        // CONFIGURAZIONE SUPABASE - AGGIORNARE QUI CON LE NUOVE CREDENZIALI
+        // =========================================================================
+        const SUPABASE_URL = 'https://iuuvakwbuequapwoyddd.supabase.co';
+        const SUPABASE_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1dXZha3didWVxdWFwd295ZGRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMTE5ODEsImV4cCI6MjA3Njg4Nzk4MX0.c7BpXAk8hF0lijNnWaURjQxsZDBv66JvV8NJ1xxX-KI';
+
+        // Pulizia per prevenire errori di spazio bianco (già implementata)
+        const supabase = createClient(
+            SUPABASE_URL.trim(),
+            SUPABASE_API_KEY.trim(),
+            {
+                auth: {
+                    persistSession: false,
+                }
+            }
+        );
+
+        let userId = null; // ID dell'utente attualmente loggato (docente)
+        let isAdmin = false; // Flag per l'accesso amministratore
+        let userVoted = false; // Flag per tracciare il voto dell'utente
+        let votingIsActive = false; // Stato globale della votazione
+        let requiredCode = null; // Codice richiesto per l'accesso
+
+        console.log('Supabase Client inizializzato con successo.');
+
+        // =========================================================================
+        // UI FUNCTIONS
+        // =========================================================================
+
+        /**
+         * Mostra un messaggio di stato (es. successo o errore)
+         * @param {string} message - Il messaggio da mostrare.
+         * @param {string} type - Il tipo ('success' o 'error').
+         */
+        function showStatusMessage(message, type = 'success') {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.textContent = message;
+            statusDiv.className = 'p-3 rounded-xl shadow-2xl text-white';
+
+            if (type === 'error') {
+                statusDiv.classList.add('bg-red-600');
+            } else {
+                statusDiv.classList.add('bg-green-600');
+            }
+
+            statusDiv.classList.add('show');
+            setTimeout(() => {
+                statusDiv.classList.remove('show');
+            }, 3000);
         }
 
-        mainContentEl.innerHTML = `
-            <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
-                <span class="text-blue-600">Votazione</span> in Corso
-            </h2>
-            <div class="p-4 rounded-xl mb-6 font-semibold text-center ${statusClass}">
-                ${statusText}
-            </div>
-            
-            ${voteMessage}
-            
-            <div class="grid grid-cols-1 gap-4">
-                <button data-vote="Favorevole" ${buttonDisabled} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-green-600 hover:bg-green-700 ${disabledClass} shadow-lg">
-                    Favorevole (${votingResults.Favorevole})
-                </button>
-                <button data-vote="Contrario" ${buttonDisabled} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-red-600 hover:bg-red-700 ${disabledClass} shadow-lg">
-                    Contrario (${votingResults.Contrario})
-                </button>
-                <button data-vote="Astenuto" ${buttonDisabled} class="vote-btn py-5 px-4 rounded-xl text-gray-800 font-bold text-lg bg-yellow-400 hover:bg-yellow-500 ${disabledClass} shadow-lg">
-                    Astenuto (${votingResults.Astenuto})
-                </button>
-            </div>
-        `;
-        // Listener per i pulsanti di voto
-        mainContentEl.querySelectorAll('.vote-btn').forEach(button => {
-            button.addEventListener('click', (e) => {
-                if (!e.target.disabled) {
-                    handleVote(e.target.dataset.vote);
-                }
-            });
-        });
-    }
+        /**
+         * Aggiorna lo stato della votazione e l'interfaccia.
+         */
+        function updateVotingUI() {
+            const messageDiv = document.getElementById('voting-message');
+            const codePrompt = document.getElementById('code-prompt');
+            const voteDashboard = document.getElementById('vote-dashboard');
+            const votedMessage = document.getElementById('voted-message');
+            const cardFavorevole = document.getElementById('card-favorevole');
+            const cardContrario = document.getElementById('card-contrario');
+            const adminArea = document.getElementById('admin-area');
 
-    // Avvia l'app al caricamento
-    document.addEventListener('DOMContentLoaded', initApp);
-</script>
+            // 1. Stato Login/Admin
+            if (userId) {
+                document.getElementById('user-info').textContent = isAdmin ? 'Amministratore' : `Docente ID: ${userId.substring(0, 8)}...`;
+                document.getElementById('logout-button').style.display = 'block';
+            } else {
+                document.getElementById('user-info').textContent = 'Non Acceduto';
+                document.getElementById('logout-button').style.display = 'none';
+            }
+
+            // Mostra/nascondi area Admin
+            adminArea.style.display = isAdmin ? 'block' : 'none';
+            if (isAdmin) {
+                document.getElementById('admin-current-status').textContent = `Stato Attuale: ${votingIsActive ? 'Voto APERTO' : 'Voto CHIUSO'}`;
+                document.getElementById('admin-current-code').textContent = `Codice Attuale: ${requiredCode || 'Nessun Codice (Accesso Libero)'}`;
+                document.getElementById('btn-start-vote').disabled = votingIsActive;
+                document.getElementById('btn-stop-vote').disabled = !votingIsActive;
+            }
+
+            // 2. Stato Voto
+            if (votingIsActive) {
+                // Voto Attivo
+                messageDiv.textContent = 'La votazione è attualmente APERTA. Effettua la tua scelta.';
+                messageDiv.classList.remove('text-red-600');
+                messageDiv.classList.add('text-green-600');
+
+                if (userId) {
+                    codePrompt.classList.add('hidden'); // Nascondi prompt se loggato
+
+                    if (userVoted) {
+                        voteDashboard.classList.add('pointer-events-none', 'opacity-50');
+                        votedMessage.classList.remove('hidden');
+                        cardFavorevole.classList.remove('voted');
+                        cardContrario.classList.remove('voted');
+                    } else {
+                        voteDashboard.classList.remove('pointer-events-none', 'opacity-50');
+                        votedMessage.classList.add('hidden');
+                    }
+
+                } else {
+                    // Non loggato, mostra prompt se codice richiesto
+                    if (requiredCode) {
+                         messageDiv.textContent = 'Inserisci il codice di accesso per votare.';
+                         messageDiv.classList.add('text-blue-600');
+                         codePrompt.classList.remove('hidden');
+                         voteDashboard.classList.add('pointer-events-none', 'opacity-50');
+                    } else {
+                         // Nessun codice richiesto, permetti login anonimo e voto
+                         codePrompt.classList.add('hidden');
+                         voteDashboard.classList.remove('pointer-events-none', 'opacity-50');
+                         handleLogin(); // Accesso automatico anonimo
+                    }
+                }
+
+            } else {
+                // Voto Chiuso
+                messageDiv.textContent = 'La votazione è attualmente CHIUSA. Attendi l\'avvio.';
+                messageDiv.classList.remove('text-green-600');
+                messageDiv.classList.add('text-red-600');
+                codePrompt.classList.add('hidden');
+                voteDashboard.classList.add('pointer-events-none', 'opacity-50');
+                votedMessage.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Aggiorna la dashboard dei risultati.
+         * @param {object} counts - L'oggetto con i conteggi dei voti.
+         */
+        function updateResultsUI(counts) {
+            const attendeeCount = counts.attendee_count || 0;
+            const totalVotes = counts.total_votes || 0;
+            const yesVotes = counts.yes_votes || 0;
+            const noVotes = counts.no_votes || 0;
+
+            document.getElementById('attendee-count').textContent = attendeeCount;
+            document.getElementById('total-votes').textContent = totalVotes;
+            document.getElementById('yes-votes').textContent = yesVotes;
+            document.getElementById('no-votes').textContent = noVotes;
+
+            let percentage = 0;
+            if (attendeeCount > 0) {
+                percentage = Math.round((totalVotes / attendeeCount) * 100);
+            }
+            document.getElementById('voting-percentage').textContent = `${percentage}%`;
+
+            // Aggiorna le barre di progresso
+            let totalVoters = yesVotes + noVotes;
+            if (totalVoters === 0) {
+                totalVoters = 1; // Previene divisione per zero
+            }
+
+            const yesWidth = Math.round((yesVotes / totalVoters) * 100);
+            const noWidth = Math.round((noVotes / totalVoters) * 100);
+
+            document.getElementById('yes-bar').style.width = `${yesWidth}%`;
+            document.getElementById('no-bar').style.width = `${noWidth}%`;
+        }
+
+        // =========================================================================
+        // AUTHENTICATION & SESSION
+        // =========================================================================
+
+        /**
+         * Gestisce il login (Admin o Docente)
+         */
+        async function handleLogin() {
+            const accessCode = document.getElementById('access-code').value.trim();
+            const isAdminCode = accessCode === 'admin';
+
+            // 1. LOGIN ADMIN
+            if (isAdminCode && requiredCode) {
+                showStatusMessage('L\'accesso admin non è consentito con codice richiesto.', 'error');
+                return;
+            }
+            
+            if (isAdminCode && !requiredCode) {
+                userId = 'admin_user'; // ID fittizio per admin
+                isAdmin = true;
+                updateVotingUI();
+                showStatusMessage('Accesso Admin effettuato.', 'success');
+                return;
+            }
+
+            // 2. LOGIN DOCENTE (con codice o anonimo)
+            if (requiredCode && accessCode !== requiredCode) {
+                showStatusMessage('Codice di accesso non valido.', 'error');
+                return;
+            }
+
+            // Login anonimo (o con codice corretto)
+            try {
+                // Genera un ID utente unico per la sessione (o usa un cookie/storage)
+                userId = window.crypto.randomUUID();
+
+                // Registra l'utente se non è già presente
+                const { data: existingAttendee } = await supabase
+                    .from('attendees')
+                    .select('id')
+                    .eq('session_id', userId)
+                    .single();
+
+                if (!existingAttendee) {
+                    const { error: insertError } = await supabase
+                        .from('attendees')
+                        .insert([{ session_id: userId }]);
+
+                    if (insertError) {
+                        throw insertError;
+                    }
+                }
+                
+                // Controlla se l'utente ha già votato
+                await checkUserVoteStatus();
+
+                isAdmin = false;
+                updateVotingUI();
+                showStatusMessage(`Accesso Docente riuscito!`, 'success');
+
+            } catch (error) {
+                console.error('Errore durante l\'accesso o la registrazione:', error);
+                showStatusMessage('Errore di accesso. Riprova.', 'error');
+            }
+        }
+
+        /**
+         * Gestisce il logout dell'utente (o dell'admin)
+         */
+        function handleLogout() {
+            userId = null;
+            isAdmin = false;
+            userVoted = false;
+            document.getElementById('access-code').value = '';
+            document.getElementById('user-info').textContent = 'Disconnesso';
+            updateVotingUI();
+            showStatusMessage('Disconnessione effettuata.', 'success');
+        }
+
+        // =========================================================================
+        // DATABASE READ (Impostazioni e Voti)
+        // =========================================================================
+
+        /**
+         * Fetches settings, vote counts, and checks the user's vote status.
+         */
+        async function fetchSettingsAndVotes(refresh = false) {
+            try {
+                // 1. Fetch Impostazioni
+                const { data: settingsData, error: settingsError } = await supabase
+                    .from('settings')
+                    .select('is_voting_active, required_code, id')
+                    .limit(1)
+                    .single();
+
+                if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 = nessun risultato trovato
+                    throw settingsError;
+                }
+
+                if (settingsData) {
+                    votingIsActive = settingsData.is_voting_active;
+                    requiredCode = settingsData.required_code;
+                } else {
+                    // Imposta valori predefiniti se la tabella è vuota
+                    votingIsActive = false;
+                    requiredCode = null;
+                }
+                
+                // 2. Fetch Conteggi Voti tramite funzione SQL
+                const { data: counts, error: countsError } = await supabase.rpc('get_vote_counts');
+
+                if (countsError) {
+                    console.error("Errore RPC get_vote_counts:", countsError);
+                    showStatusMessage('Errore nel recupero dei risultati.', 'error');
+                    return;
+                }
+
+                // 3. Controlla lo stato del voto dell'utente loggato
+                if (userId && !isAdmin && !refresh) {
+                   await checkUserVoteStatus();
+                }
+                
+                // Aggiorna l'interfaccia
+                updateResultsUI(counts[0] || {});
+                updateVotingUI();
+
+            } catch (error) {
+                console.error('Errore fetch settings o vote counts:', error);
+                showStatusMessage('Errore durante l\'inizializzazione dell\'app.', 'error');
+            }
+        }
+
+        /**
+         * Controlla se l'utente attuale ha già votato.
+         */
+        async function checkUserVoteStatus() {
+            if (!userId) {
+                userVoted = false;
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('votes')
+                    .select('id')
+                    .eq('session_id', userId)
+                    .limit(1)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') { // PGRST116 = nessun risultato trovato
+                    throw error;
+                }
+
+                userVoted = !!data;
+
+            } catch (error) {
+                console.error('Errore nel controllo stato voto:', error);
+                showStatusMessage('Errore nel controllo stato voto.', 'error');
+            }
+        }
+
+        // =========================================================================
+        // DATABASE WRITE (Voto)
+        // =========================================================================
+
+        /**
+         * Registra il voto dell'utente.
+         * @param {string} voteType - 'Favorevole' o 'Contrario'.
+         */
+        async function handleVote(voteType) {
+            if (!votingIsActive) {
+                showStatusMessage('La votazione è chiusa.', 'error');
+                return;
+            }
+            if (!userId || isAdmin) {
+                 showStatusMessage('Devi prima effettuare l\'accesso come docente per votare.', 'error');
+                 return;
+            }
+            if (userVoted) {
+                showStatusMessage('Hai già espresso il tuo voto.', 'error');
+                return;
+            }
+
+            try {
+                // Registra il voto
+                const { error } = await supabase
+                    .from('votes')
+                    .insert([
+                        { session_id: userId, vote: voteType }
+                    ]);
+
+                if (error) {
+                    // Controlla per vincolo di unicità (già votato)
+                    if (error.code === '23505') {
+                        showStatusMessage('Hai già espresso il tuo voto.', 'error');
+                    } else {
+                        throw error;
+                    }
+                } else {
+                    userVoted = true;
+                    updateVotingUI();
+                    showStatusMessage('Voto registrato con successo!', 'success');
+                    
+                    // Logga l'azione
+                    await supabase.from('log').insert([{ message: `Voto registrato: ${voteType} da ${userId.substring(0, 8)}...` }]);
+                }
+
+            } catch (error) {
+                console.error('Errore durante la registrazione del voto:', error);
+                showStatusMessage('Errore durante la registrazione del voto.', 'error');
+            }
+        }
+
+        // =========================================================================
+        // ADMIN FUNCTIONS
+        // =========================================================================
+
+        /**
+         * Aggiorna lo stato di attivazione/disattivazione della votazione.
+         * @param {boolean} isActive - True per aprire, False per chiudere.
+         */
+        async function updateVotingStatus(isActive) {
+            if (!isAdmin) return;
+
+            try {
+                // Chiama la funzione RPC per aggiornare lo stato
+                const { error } = await supabase.rpc('update_admin_settings', {
+                    new_code: requiredCode,
+                    is_voting_active: isActive
+                });
+
+                if (error) throw error;
+
+                votingIsActive = isActive;
+                updateVotingUI();
+                showStatusMessage(`Votazione ${isActive ? 'APERTURA' : 'CHIUSURA'} eseguita con successo!`, 'success');
+                
+                // Logga l'azione
+                await supabase.from('log').insert([{ message: `Admin ha ${isActive ? 'APERTURA' : 'CHIUSURA'} la votazione.` }]);
+
+            } catch (error) {
+                console.error('Errore durante l\'aggiornamento dello stato:', error);
+                showStatusMessage('Errore aggiornamento stato votazione.', 'error');
+            }
+        }
+
+        /**
+         * Aggiorna il codice di accesso richiesto.
+         */
+        async function updateSettingsCode() {
+            if (!isAdmin) return;
+
+            const newCode = document.getElementById('new-code-input').value.trim();
+            const codeToSave = newCode === '' ? null : newCode;
+
+            try {
+                // Chiama la funzione RPC per aggiornare il codice
+                const { error } = await supabase.rpc('update_admin_settings', {
+                    new_code: codeToSave,
+                    is_voting_active: votingIsActive
+                });
+
+                if (error) throw error;
+
+                requiredCode = codeToSave;
+                updateVotingUI();
+                showStatusMessage('Codice di accesso aggiornato con successo!', 'success');
+                
+                // Logga l'azione
+                await supabase.from('log').insert([{ message: `Admin ha aggiornato il codice di accesso.` }]);
+
+            } catch (error) {
+                console.error('Errore durante l\'aggiornamento del codice:', error);
+                showStatusMessage('Errore aggiornamento codice.', 'error');
+            }
+        }
+
+        /**
+         * Reset Totale del Sistema (Elimina voti e partecipanti)
+         */
+        async function resetSystem() {
+            if (!isAdmin || !confirm('Sei sicuro di voler effettuare un RESET TOTALE? Verranno eliminati tutti i Voti e i Partecipanti.')) {
+                return;
+            }
+            try {
+                // Elimina tutti i voti
+                const { error: voteError } = await supabase.from('votes').delete().neq('id', 0);
+                if (voteError) throw voteError;
+
+                // Elimina tutti i partecipanti
+                const { error: attendeeError } = await supabase.from('attendees').delete().neq('id', 0);
+                if (attendeeError) throw attendeeError;
+                
+                // Pulisci il log
+                await supabase.from('log').delete().neq('id', 0);
+
+                // Resetta le impostazioni di voto a CHIUSO e nessun codice
+                const { error: settingsError } = await supabase.rpc('update_admin_settings', {
+                    new_code: null,
+                    is_voting_active: false
+                });
+                if (settingsError) throw settingsError;
+
+                // Aggiorna la UI
+                handleLogout(); // Disconnette tutti, incluso l'admin
+                showStatusMessage('RESET TOTALE ESEGUITO con successo. Il sistema è pronto per un nuovo voto.', 'success');
+                fetchSettingsAndVotes(); // Ricarica lo stato
+                
+            } catch (error) {
+                 console.error('Errore durante il reset totale:', error);
+                 showStatusMessage('Errore critico durante il reset totale del sistema.', 'error');
+            }
+        }
+
+        // =========================================================================
+        // REALTIME SUBSCRIPTION & INIT
+        // =========================================================================
+
+        /**
+         * Avvia la sottoscrizione Realtime per gli aggiornamenti.
+         */
+        function setupRealtime() {
+            supabase
+                .channel('public:votes, settings')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, (payload) => {
+                    console.log('Realtime change: votes', payload);
+                    fetchSettingsAndVotes();
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'attendees' }, (payload) => {
+                    console.log('Realtime change: attendees', payload);
+                    fetchSettingsAndVotes();
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload) => {
+                    console.log('Realtime change: settings', payload);
+                    fetchSettingsAndVotes();
+                })
+                .subscribe();
+
+            console.log('Supabase Realtime Abilitato.');
+        }
+
+        // Inizializzazione: chiamata alla prima lettura dei dati e avvio Realtime
+        window.onload = function() {
+            // Rende le funzioni globali disponibili per gli handler onclick nell'HTML
+            window.handleLogin = handleLogin;
+            window.handleLogout = handleLogout;
+            window.handleVote = handleVote;
+            window.updateVotingStatus = updateVotingStatus;
+            window.updateSettingsCode = updateSettingsCode;
+            window.resetSystem = resetSystem;
+            window.fetchSettingsAndVotes = fetchSettingsAndVotes;
+
+            fetchSettingsAndVotes();
+            setupRealtime();
+        };
+
+    </script>
 </body>
 </html>
