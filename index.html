@@ -88,7 +88,7 @@
                     throw new Error("Credenziali Supabase mancanti. Aggiorna SUPABASE_URL e SUPABASE_API_KEY.");
                 }
 
-                supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_API_KEY, {
+                supabase = window.supabaseJs.createClient(SUPABASE_URL, SUPABASE_API_KEY, {
                     auth: { persistSession: false },
                 });
                 console.log('Supabase Client inizializzato con successo.');
