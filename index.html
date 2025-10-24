@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -112,15 +112,15 @@
 <script>
     // --- CONFIGURAZIONE SUPABASE ---
     // Devi inserire l'URL del tuo progetto Supabase e la chiave anon pubblica.
-    // L'URL è stato inserito, ora incolla la chiave alla riga successiva.
     const SUPABASE_URL = 'https://fiwxcvafquxhkmulivgp.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRFJ6So4PYRKCW0gMQuNJ16PvDt8'; // Chiave anon pubblica inserita
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpd3hjdmFmcXV4aGttdWxpdmdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyOTIyMzQsImV4cCI6MjA3Njg2ODIzNH0.4Lhb5V0Du9IfQ_eYRF6So4PYRKCW0gMQuNJ16PvDt8'; // Chiave anon pubblica inserita
 
     // --- INIZIALIZZAZIONE ---
     let supabase;
     
     try {
         if (SUPABASE_ANON_KEY === 'LA_TUA_CHIAVE_ANON_PUBBLICA_REALE' || !SUPABASE_ANON_KEY) {
+            // Questo blocco viene attivato se la chiave è il placeholder.
             throw new Error("Errore: Chiave API Supabase non configurata.");
         }
         supabase = supabaseClient.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
