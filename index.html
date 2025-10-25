@@ -72,27 +72,36 @@
         <div> <p class="text-2xl font-bold text-gray-600" id="percent-voted">0%</p> <p class="text-xs text-gray-500">Quota</p> </div>
     </div>
 
-    <!-- Contenitore Flex per le due colonne -->
-    <div class="md:flex md:space-x-6">
+    <!-- Contenitore Flex per le sezioni -->
+     <div class="md:flex md:space-x-6">
 
-        <!-- Colonna Sinistra: Votazione e Azioni -->
+        <!-- Colonna Sinistra: Configurazione -->
         <div class="md:w-1/2 mb-6 md:mb-0">
-            <h4 class="text-lg font-bold text-red-700 mt-6 border-t pt-4">1. Votazione e Azioni</h4>
-            <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold text-red-600">DISATTIVO</span>.</p>
-            <div class="space-y-2 mt-4">
-                <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition bg-red-600 hover:bg-red-700 shadow-md"> Attiva Votazione </button>
-                <button id="reset-results-btn" class="w-full py-2 px-4 rounded-xl text-red-700 border border-red-700 bg-white hover:bg-red-50 transition font-semibold shadow-sm"> Resetta Voti (Salva Report) </button>
-            </div>
+             <h4 class="text-lg font-bold text-gray-800 border-t pt-4">1. Configurazione Voto</h4>
+             <p class="text-sm text-gray-700 mb-2">Codice Corrente Richiesto: <span id="current-required-code" class="font-mono text-sm bg-blue-100 p-1 rounded font-bold">Nessuno</span></p>
+             <div class="flex space-x-2 mb-4">
+                 <input type="text" id="admin-set-code" placeholder="Codice Univoco (es. 1234)" class="w-2/3 p-2 border border-gray-400 rounded-lg text-sm" />
+                 <button id="update-code-btn" class="w-1/3 py-2 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md">
+                     Imposta
+                 </button>
+             </div>
         </div>
 
-        <!-- Colonna Destra: Log e Reset -->
-        <div class="md:w-1/2">
-            <h4 class="text-lg font-bold text-gray-800 mt-6 border-t pt-4">2. Log e Reset Progetto</h4>
-            <div class="grid grid-cols-2 gap-2 mt-4">
-                <button id="show-deliberations-btn" class="py-2 px-2 rounded-xl text-purple-700 border border-purple-700 bg-white hover:bg-purple-50 transition font-semibold text-sm shadow-sm"> Mostra Log Storico </button>
-                <button id="reset-project-btn" class="py-2 px-2 rounded-xl text-white border border-gray-600 bg-gray-600 hover:bg-gray-700 transition font-semibold text-sm shadow-sm"> RESET TOTALE </button>
-            </div>
-        </div>
+        <!-- Colonna Destra: Azioni e Log -->
+         <div class="md:w-1/2">
+             <h4 class="text-lg font-bold text-red-700 border-t pt-4">2. Votazione e Azioni</h4>
+             <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold text-red-600">DISATTIVO</span>.</p>
+             <div class="space-y-2 mt-4">
+                 <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition bg-red-600 hover:bg-red-700 shadow-md"> Attiva Votazione </button>
+                 <button id="reset-results-btn" class="w-full py-2 px-4 rounded-xl text-red-700 border border-red-700 bg-white hover:bg-red-50 transition font-semibold shadow-sm"> Resetta Voti (Salva Report) </button>
+             </div>
+
+             <h4 class="text-lg font-bold text-gray-800 mt-6 border-t pt-4">3. Log e Reset Progetto</h4>
+             <div class="grid grid-cols-2 gap-2 mt-4">
+                 <button id="show-deliberations-btn" class="py-2 px-2 rounded-xl text-purple-700 border border-purple-700 bg-white hover:bg-purple-50 transition font-semibold text-sm shadow-sm"> Mostra Log Storico </button>
+                 <button id="reset-project-btn" class="py-2 px-2 rounded-xl text-white border border-gray-600 bg-gray-600 hover:bg-gray-700 transition font-semibold text-sm shadow-sm"> RESET TOTALE </button>
+             </div>
+         </div>
 
     </div>
 </div>
@@ -106,7 +115,7 @@
     let isVotingActive = false;
     let hasVotedInCurrentRound = false;
     let votingResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
-    // let requiredCode = null; // RIMOSSO
+    let requiredCode = null; // REINSERITO
     let isViewingLog = false;
     let isAdminRole = false;
     let initialised = false;
@@ -118,7 +127,7 @@
     // Elementi UI
     const mainContentEl = document.getElementById('main-content');
     const adminPanelEl = document.getElementById('admin-panel');
-    let totalAttendeesEl, totalVotedEl, percentVotedEl, toggleVotingBtn, resetResultsBtn, /* updateCodeBtn, */ votingStatusTextEl, /* currentRequiredCodeEl, */ showDeliberationsBtn, resetProjectBtn;
+    let totalAttendeesEl, totalVotedEl, percentVotedEl, toggleVotingBtn, resetResultsBtn, updateCodeBtn, votingStatusTextEl, currentRequiredCodeEl, showDeliberationsBtn, resetProjectBtn;
 
 
     // --- FUNZIONI DI UTILITÀ E SETUP ---
@@ -164,11 +173,11 @@
     }
 
     // --- FUNZIONI DI LOGICA E DATI ---
-    async function fetchSettingsAndVotes() { /* ... (come prima, ma senza requiredCode) ... */
+    async function fetchSettingsAndVotes() { /* ... (come prima, CON requiredCode) ... */
         if (!initialised || !supabase) return;
         try {
-            // Fetch Settings (solo stato voto e reset)
-            const { data: settingsData, error: settingsError } = await supabase.from('settings').select('is_voting_active, last_reset').limit(1).single();
+            // Fetch Settings (CON requiredCode)
+            const { data: settingsData, error: settingsError } = await supabase.from('settings').select('is_voting_active, required_code, last_reset').limit(1).single();
             if (settingsError && settingsError.code !== 'PGRST116') {
                  if (settingsError.code === '42501') showMessage("Errore permessi DB (RLS). Esegui SQL.", true);
                  else showMessage(`Errore DB settings: ${settingsError.message}`, true);
@@ -207,18 +216,18 @@
                 } else { hasVotedInCurrentRound = false; }
             }
 
-            // Aggiorna stato globale
-            // requiredCode = settingsData ? settingsData.required_code : null; // RIMOSSO
+            // Aggiorna stato globale (CON requiredCode)
+            requiredCode = settingsData ? settingsData.required_code : null; // REINSERITO
             isVotingActive = settingsData ? settingsData.is_voting_active : false;
             votingResults = { Favorevole: yesVotes, Contrario: noVotes, Astenuto: abstained < 0 ? 0 : abstained };
 
-            // Aggiorna UI Admin
+            // Aggiorna UI Admin (CON requiredCode)
             if (isAdminRole && totalAttendeesEl) {
                 totalAttendeesEl.textContent = totalPresenti;
                 totalVotedEl.textContent = totalVotanti;
                 const percent = totalPresenti > 0 ? Math.round((totalVotanti / totalPresenti) * 100) : 0;
                 percentVotedEl.textContent = `${percent}%`;
-                // currentRequiredCodeEl.textContent = requiredCode || 'N/A'; // RIMOSSO
+                currentRequiredCodeEl.textContent = requiredCode || 'Nessuno'; // REINSERITO
                 votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
                 votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
                 toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
@@ -229,9 +238,28 @@
 
 
     // --- FUNZIONI DI AZIONE ADMIN ---
-    /* async function handleAdminCodeUpdate() { // FUNZIONE RIMOSSA
-        // ...
-    } */
+    async function handleAdminCodeUpdate() { // FUNZIONE REINSERITA (usa RPC SECURITY DEFINER)
+        if (!initialised || !isAdminRole || !supabase) return;
+        const newCode = document.getElementById('admin-set-code').value.trim();
+        if (!newCode) { showMessage("Inserisci un codice valido.", true); return; }
+        // Chiama la funzione RPC
+        const { error } = await supabase.rpc('update_admin_settings', {
+             new_code: newCode,
+             is_voting_active: false // Impostare codice disattiva sempre il voto
+        });
+        if (error) {
+            console.error("Errore aggiornamento codice RPC:", error);
+            // Mostra messaggio specifico per errore permessi
+             if (error.code === '42501' || error.message.includes('permission denied')) {
+                 showMessage("Errore permessi funzione RPC. Esegui lo script SQL.", true);
+             } else {
+                 showMessage("Errore nel salvataggio del codice.", true);
+             }
+        } else {
+            requiredCode = newCode; isVotingActive = false;
+            showMessage(`Codice impostato a ${newCode}. Voto Disattivo.`); renderApp();
+        }
+    }
     async function handleAdminToggle() { /* ... (come prima) ... */
         if (!initialised || !isAdminRole || !supabase) return; const newState = !isVotingActive;
         const { error } = await supabase.from('settings').update({ is_voting_active: newState }).eq('id', 1);
@@ -241,7 +269,7 @@
             console.error("Errore toggle:", error);
         } else { isVotingActive = newState; showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`); renderApp(); }
      }
-    async function handleResetResults() { /* ... (come prima, ma NON cancella attendees) ... */
+    async function handleResetResults() { /* ... (come prima) ... */
         if (!initialised || !isAdminRole || !supabase) return;
         try {
             const { data: voteCounts, error: votesError } = await supabase.rpc('get_vote_counts');
@@ -262,15 +290,15 @@
             renderApp();
         } catch (e) { console.error("Errore reset:", e); showMessage("ERRORE: Reset fallito.", true); }
      }
-    async function handleResetProject() { /* ... (come prima, ma senza requiredCode) ... */
+    async function handleResetProject() { /* ... (come prima, CON requiredCode) ... */
         if (!initialised || !isAdminRole || !supabase) return;
         if (!confirm('RESET TOTALE? Cancellerà TUTTI i dati!')) return;
         try {
             await supabase.from('votes').delete().neq('id', 0);
             await supabase.from('attendees').delete().neq('id', 0);
             await supabase.from('log').delete().neq('id', 0);
-            await supabase.from('settings').update({ /* required_code: null, */ is_voting_active: false, last_reset: new Date().toISOString() }).eq('id', 1);
-            // requiredCode = null; // RIMOSSO
+            await supabase.from('settings').update({ required_code: null, is_voting_active: false, last_reset: new Date().toISOString() }).eq('id', 1); // REINSERITO required_code
+            requiredCode = null; // REINSERITO
             isVotingActive = false; isRegistered = false; hasVotedInCurrentRound = false;
             showMessage("RESET TOTALE ESEGUITO.");
             renderApp();
@@ -290,18 +318,18 @@
 
 
     // --- FUNZIONI DI AZIONE UTENTE ---
-    async function handleRegistration() { /* ... (come prima, ma senza codice) ... */
+    async function handleRegistration() { /* ... (come prima, CON codice) ... */
         if (!initialised || !supabase) return;
         const nome = document.getElementById('nome').value.trim();
         const cognome = document.getElementById('cognome').value.trim();
-        // const codice = document.getElementById('codice').value.trim(); // RIMOSSO
-        if (!nome || !cognome /* || !codice */) { showMessage("Compila Nome e Cognome.", true); return; }
-        // if (requiredCode === null || requiredCode === 'null' || requiredCode === '') { showMessage("Codice accesso NON impostato.", true); return; } // RIMOSSO
-        // if (codice != requiredCode) { showMessage("Codice univoco errato.", true); return; } // RIMOSSO
+        const codice = document.getElementById('codice').value.trim(); // REINSERITO
+        if (!nome || !cognome || !codice) { showMessage("Compila Nome, Cognome e Codice.", true); return; } // AGGIORNATO messaggio
+        if (requiredCode === null || requiredCode === 'null' || requiredCode === '') { showMessage("Codice accesso NON impostato.", true); return; } // REINSERITO check
+        if (codice != requiredCode) { showMessage("Codice univoco errato.", true); return; } // REINSERITO check
         try {
             const { count } = await supabase.from('attendees').select('id', { count: 'exact', head: true }).eq('user_id', userId);
             if (count !== null && count > 0) { isRegistered = true; showMessage("Già registrato/a."); renderApp(); return; }
-            const { error } = await supabase.from('attendees').insert({ user_id: userId, first_name: nome, last_name: cognome /*, access_code: codice */ }); // RIMOSSO access_code
+            const { error } = await supabase.from('attendees').insert({ user_id: userId, first_name: nome, last_name: cognome, access_code: codice }); // REINSERITO access_code
             if (error) throw new Error(error.message);
             isRegistered = true; showMessage(`Registrazione di ${nome} ${cognome} completata.`); renderApp();
         } catch (e) {
@@ -341,22 +369,22 @@
     function renderUserInterface() { /* ... (come prima) ... */
          if (!isRegistered) renderRegistrationPage(); else renderVotingPage();
      }
-    function renderRegistrationPage() { /* ... (come prima, ma senza codice input/status) ... */
+    function renderRegistrationPage() { /* ... (come prima, CON codice input/status) ... */
         const savedNome = document.getElementById('nome')?.value || '';
         const savedCognome = document.getElementById('cognome')?.value || '';
-        // const savedCodice = document.getElementById('codice')?.value || ''; // RIMOSSO
-        // const codeValid = requiredCode !== null && requiredCode !== 'null' && requiredCode !== ''; // RIMOSSO
-        // const codeStatus = codeValid ? '<p>Codice ATTIVO.</p>' : '<p class="text-red-600">Codice NON impostato.</p>'; // RIMOSSO
-        const isButtonDisabled = isRegistered; // Disabilitato solo se già registrato
+        const savedCodice = document.getElementById('codice')?.value || ''; // REINSERITO
+        const codeValid = requiredCode !== null && requiredCode !== 'null' && requiredCode !== ''; // REINSERITO check
+        const codeStatus = codeValid ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice accesso ATTIVO.</p>' : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice accesso NON impostato.</p>'; // REINSERITO status
+        const isButtonDisabled = !codeValid || isRegistered; // AGGIORNATO check
 
         mainContentEl.innerHTML = `
             <h2 class="text-2xl font-bold mb-6 text-center"><span class="text-blue-600">Registro</span> Presenze</h2>
             <div class="p-3 mb-4 bg-gray-50 border rounded"><p class="text-sm text-center">ID Utente: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || '...'}</span></p></div>
-            ${isRegistered ? '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata.</p>' : '' }
+            ${isRegistered ? '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata.</p>' : codeStatus } <!-- AGGIORNATO -->
             <div class="space-y-4">
                 <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border rounded focus:ring-blue-500" value="${savedNome}" ${isRegistered ? 'disabled' : ''}/>
                 <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border rounded focus:ring-blue-500" value="${savedCognome}" ${isRegistered ? 'disabled' : ''}/>
-                <!-- <input type="text" id="codice" placeholder="Codice Univoco" class="w-full p-3 border rounded" value="${savedCodice}" ${isRegistered ? 'disabled' : ''}/> --> <!-- RIMOSSO -->
+                <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border rounded focus:ring-blue-500" value="${savedCodice}" ${isRegistered ? 'disabled' : ''}/> <!-- REINSERITO -->
                 <button id="register-btn" class="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 shadow ${isButtonDisabled ? 'opacity-50 cursor-not-allowed' : ''}" ${isButtonDisabled ? 'disabled' : ''}>
                     Registra Presenza
                 </button>
@@ -394,7 +422,7 @@
 
 
     // --- INIZIALIZZAZIONE ---
-    function initApp() { /* ... (come prima, aggiornato per i riferimenti rimossi) ... */
+    function initApp() { /* ... (come prima, CON riferimenti Admin per codice) ... */
         if (!initialised) {
             try {
                 // Non procedere se Supabase non è caricato
@@ -417,15 +445,15 @@
                 percentVotedEl = document.getElementById('percent-voted');
                 toggleVotingBtn = document.getElementById('toggle-voting-btn');
                 resetResultsBtn = document.getElementById('reset-results-btn');
-                // updateCodeBtn = document.getElementById('update-code-btn'); // RIMOSSO
+                updateCodeBtn = document.getElementById('update-code-btn'); // REINSERITO
                 votingStatusTextEl = document.getElementById('voting-status-text');
-                // currentRequiredCodeEl = document.getElementById('current-required-code'); // RIMOSSO
+                currentRequiredCodeEl = document.getElementById('current-required-code'); // REINSERITO
                 showDeliberationsBtn = document.getElementById('show-deliberations-btn');
                 resetProjectBtn = document.getElementById('reset-project-btn');
                 adminPanelEl.classList.remove('hidden');
 
-                // Aggiunge listener Admin (senza updateCodeBtn)
-                // if (updateCodeBtn) { updateCodeBtn.replaceWith(updateCodeBtn.cloneNode(true)); document.getElementById('update-code-btn').addEventListener('click', handleAdminCodeUpdate); } // RIMOSSO
+                // Aggiunge listener Admin (CON updateCodeBtn)
+                if (updateCodeBtn) { updateCodeBtn.replaceWith(updateCodeBtn.cloneNode(true)); document.getElementById('update-code-btn').addEventListener('click', handleAdminCodeUpdate); } // REINSERITO
                 if (toggleVotingBtn) { toggleVotingBtn.replaceWith(toggleVotingBtn.cloneNode(true)); document.getElementById('toggle-voting-btn').addEventListener('click', handleAdminToggle); }
                 if (resetResultsBtn) { resetResultsBtn.replaceWith(resetResultsBtn.cloneNode(true)); document.getElementById('reset-results-btn').addEventListener('click', handleResetResults); }
                 if (showDeliberationsBtn) { showDeliberationsBtn.replaceWith(showDeliberationsBtn.cloneNode(true)); document.getElementById('show-deliberations-btn').addEventListener('click', showDeliberationsLog); }
@@ -455,4 +483,3 @@
 </script>
 </body>
 </html>
-
