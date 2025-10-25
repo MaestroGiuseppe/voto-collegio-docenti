@@ -15,6 +15,10 @@
         /* Stile personalizzato */
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
         .container-card { background-color: white; padding: 2rem; border-radius: 1.5rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); max-width: 480px; width: 95%; margin-bottom: 1.5rem; }
+        /* Aggiunta per il pannello admin orizzontale */
+        @media (min-width: 768px) { /* md breakpoint di Tailwind */
+            #admin-panel { max-width: 900px; } /* Larghezza maggiore per contenere le colonne */
+        }
         .vote-btn { transition: all 0.2s; transform: scale(1.0); }
         .vote-btn:hover:not(.opacity-50):not(.bg-blue-800) { transform: scale(1.05); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
         .vote-btn:active:not(.opacity-50):not(.bg-blue-800) { transform: scale(0.98); }
@@ -28,7 +32,7 @@
     <script>
         const supabaseSrc = `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js?v=${Date.now()}`;
         const lucideSrc = `https://unpkg.com/lucide@latest/dist/umd/lucide.js?v=${Date.now()}`;
-        function loadScript(src) { /* ... (funzione loadScript come prima) ... */
+        function loadScript(src) {
             return new Promise((resolve, reject) => {
                 const script = document.createElement('script');
                 script.src = src;
@@ -43,7 +47,7 @@
                 if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initApp); }
                 else { initApp(); }
             })
-            .catch(error => { /* ... (gestione errore caricamento librerie come prima) ... */
+            .catch(error => {
                  console.error("Errore caricamento librerie:", error);
                  const mainContentEl = document.getElementById('main-content');
                  if(mainContentEl) mainContentEl.innerHTML = `<p class="text-center text-red-500">Errore caricamento librerie. Ricarica.</p>`;
@@ -60,27 +64,36 @@
 </div>
 
 <!-- PANNELLO ADMIN SEPARATO -->
-<div id="admin-panel" class="hidden bg-gray-100 p-6 rounded-xl shadow-lg border border-gray-300 max-w-[480px] w-[95%]">
+<div id="admin-panel" class="hidden bg-gray-100 p-6 rounded-xl shadow-lg border border-gray-300 w-[95%]">
     <h3 class="text-xl font-bold text-red-700 mb-4 border-b pb-2">Pannello di Controllo Dirigente</h3>
-    <div class="grid grid-cols-3 gap-2 text-center mb-4">
+    <div class="grid grid-cols-3 gap-2 text-center mb-6">
         <div> <p class="text-2xl font-bold text-blue-600" id="total-attendees">0</p> <p class="text-xs text-gray-500">Presenti</p> </div>
         <div> <p class="text-2xl font-bold text-yellow-600" id="total-voted">0</p> <p class="text-xs text-gray-500">Votanti</p> </div>
         <div> <p class="text-2xl font-bold text-gray-600" id="percent-voted">0%</p> <p class="text-xs text-gray-500">Quota</p> </div>
     </div>
 
-    <!-- SEZIONE GESTIONE VOTO (Senza codice univoco) -->
-    <h4 class="text-lg font-bold text-red-700 mt-6 border-t pt-4">1. Votazione e Azioni</h4>
-    <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold text-red-600">DISATTIVO</span>.</p>
-    <div class="space-y-2 mt-4">
-        <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition bg-red-600 hover:bg-red-700 shadow-md"> Attiva Votazione </button>
-        <button id="reset-results-btn" class="w-full py-2 px-4 rounded-xl text-red-700 border border-red-700 bg-white hover:bg-red-50 transition font-semibold shadow-sm"> Resetta Voti (Salva Report) </button>
-    </div>
+    <!-- Contenitore Flex per le due colonne -->
+    <div class="md:flex md:space-x-6">
 
-    <!-- SEZIONE LOG E RESET TOTALE -->
-    <h4 class="text-lg font-bold text-gray-800 mt-6 border-t pt-4">2. Log e Reset Progetto</h4>
-    <div class="grid grid-cols-2 gap-2 mt-4">
-        <button id="show-deliberations-btn" class="py-2 px-2 rounded-xl text-purple-700 border border-purple-700 bg-white hover:bg-purple-50 transition font-semibold text-sm shadow-sm"> Mostra Log Storico </button>
-        <button id="reset-project-btn" class="py-2 px-2 rounded-xl text-white border border-gray-600 bg-gray-600 hover:bg-gray-700 transition font-semibold text-sm shadow-sm"> RESET TOTALE </button>
+        <!-- Colonna Sinistra: Votazione e Azioni -->
+        <div class="md:w-1/2 mb-6 md:mb-0">
+            <h4 class="text-lg font-bold text-red-700 mt-6 border-t pt-4">1. Votazione e Azioni</h4>
+            <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold text-red-600">DISATTIVO</span>.</p>
+            <div class="space-y-2 mt-4">
+                <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition bg-red-600 hover:bg-red-700 shadow-md"> Attiva Votazione </button>
+                <button id="reset-results-btn" class="w-full py-2 px-4 rounded-xl text-red-700 border border-red-700 bg-white hover:bg-red-50 transition font-semibold shadow-sm"> Resetta Voti (Salva Report) </button>
+            </div>
+        </div>
+
+        <!-- Colonna Destra: Log e Reset -->
+        <div class="md:w-1/2">
+            <h4 class="text-lg font-bold text-gray-800 mt-6 border-t pt-4">2. Log e Reset Progetto</h4>
+            <div class="grid grid-cols-2 gap-2 mt-4">
+                <button id="show-deliberations-btn" class="py-2 px-2 rounded-xl text-purple-700 border border-purple-700 bg-white hover:bg-purple-50 transition font-semibold text-sm shadow-sm"> Mostra Log Storico </button>
+                <button id="reset-project-btn" class="py-2 px-2 rounded-xl text-white border border-gray-600 bg-gray-600 hover:bg-gray-700 transition font-semibold text-sm shadow-sm"> RESET TOTALE </button>
+            </div>
+        </div>
+
     </div>
 </div>
 
