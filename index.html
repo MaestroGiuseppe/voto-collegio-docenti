@@ -24,7 +24,7 @@
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
             max-width: 480px;
             width: 95%;
-            margin-bottom: 1.5rem; 
+            margin-bottom: 1.5rem;
         }
         .vote-btn {
             transition: all 0.2s;
@@ -57,7 +57,7 @@
             }
         }
     </script>
-    <!-- Libreria Supabase -->
+    <!-- Libreria Supabase (Versione UMD per compatibilità HTML) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- Libreria Lucide (Icone) -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -74,7 +74,7 @@
 <!-- PANNELLO ADMIN SEPARATO -->
 <div id="admin-panel" class="hidden bg-gray-100 p-6 rounded-xl shadow-lg border border-gray-300 max-w-[480px] w-[95%]">
     <h3 class="text-xl font-bold text-red-700 mb-4 border-b pb-2">Pannello di Controllo Dirigente</h3>
-    
+
     <!-- Contatori Principali -->
     <div class="grid grid-cols-3 gap-2 text-center mb-4">
         <div>
@@ -104,7 +104,7 @@
     <!-- SEZIONE GESTIONE VOTO -->
     <h4 class="text-lg font-bold text-red-700 mt-6 border-t pt-4">2. Votazione e Azioni</h4>
     <p class="text-sm text-gray-700 mb-4">Stato Votazione: <span id="voting-status-text" class="font-bold text-red-600">DISATTIVO</span>.</p>
-    
+
     <div class="space-y-2 mt-4">
         <button id="toggle-voting-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md">
             Attiva Votazione
@@ -129,36 +129,28 @@
 <!-- Script Logica Applicativa (Supabase) -->
 <script>
     // Inizializzazione delle costanti globali
-    let supabase = null;
+    let supabase = null; // Cambiato da 'supabaseClient' per matchare la libreria UMD
     let userId = null;
     let isRegistered = false;
     let isVotingActive = false;
     let hasVotedInCurrentRound = false;
     let votingResults = { Favorevole: 0, Contrario: 0, Astenuto: 0 };
-    let requiredCode = null; 
-    let isViewingLog = false; 
-    let isAdminRole = false; 
+    let requiredCode = null;
+    let isViewingLog = false;
+    let isAdminRole = false;
     let initialised = false; // Flag per la correzione del ReferenceError
 
-    // Credenziali Supabase (INSERITE AUTOMATICAMENTE)
-    const SUPABASE_URL = 'https://iuuvakwbuequapwoyddd.supabase.co'; 
-    const SUPABASE_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1dXZha3didWVxdWFwd295ZGRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMTE5ODEsImV4cCI6MjA3Njg4Nzk4MX0.c7BpXAk8hF0lijNnWaURjQxsZDBv66JvV8NJ1xxX-KI'; 
+    // Credenziali Supabase (Inserite dal placeholder)
+    const SUPABASE_URL = 'https://iuuvakwbuequapwoyddd.supabase.co'; // <-- INCOLLA URL QUI
+    const SUPABASE_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1dXZha3didWVxdWFwd295ZGRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMTE5ODEsImV4cCI6MjA3Njg4Nzk4MX0.c7BpXAk8hF0lijNnWaURjQxsZDBv66JvV8NJ1xxX-KI'; // <-- INCOLLA CHIAVE QUI
 
     // Elementi UI
     const mainContentEl = document.getElementById('main-content');
     const adminPanelEl = document.getElementById('admin-panel');
-    
-    // Elementi Admin
-    const totalAttendeesEl = document.getElementById('total-attendees');
-    const totalVotedEl = document.getElementById('total-voted');
-    const percentVotedEl = document.getElementById('percent-voted');
-    const toggleVotingBtn = document.getElementById('toggle-voting-btn');
-    const resetResultsBtn = document.getElementById('reset-results-btn');
-    const updateCodeBtn = document.getElementById('update-code-btn'); 
-    const votingStatusTextEl = document.getElementById('voting-status-text');
-    const currentRequiredCodeEl = document.getElementById('current-required-code'); 
-    const showDeliberationsBtn = document.getElementById('show-deliberations-btn'); 
-    const resetProjectBtn = document.getElementById('reset-project-btn'); 
+
+    // Elementi Admin (definiti dopo il caricamento del DOM)
+    let totalAttendeesEl, totalVotedEl, percentVotedEl, toggleVotingBtn, resetResultsBtn, updateCodeBtn, votingStatusTextEl, currentRequiredCodeEl, showDeliberationsBtn, resetProjectBtn;
+
 
     // --- FUNZIONI DI UTILITÀ E SETUP ---
 
@@ -182,7 +174,7 @@
         if (!timestampStr) return 'N/A';
         const date = new Date(timestampStr);
         return date.toLocaleDateString('it-IT', {
-            year: 'numeric', month: '2-digit', day: '2-digit', 
+            year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', second: '2-digit'
         });
     }
@@ -199,15 +191,23 @@
             messageEl.addEventListener('transitionend', () => messageEl.remove());
         }, 3000);
     }
-    
-    // Inizializza Supabase (Corretto l'errore di scoping)
+
+    // Inizializza Supabase (Corretto l'errore di scoping e pulizia chiave)
     function initializeSupabase() {
         try {
-            // Utilizza l'oggetto globale 'supabase' creato dal tag script
-            if (typeof window.supabase == 'object') {
+            // Pulizia preventiva della chiave API da eventuali spazi
+            const cleanApiKey = SUPABASE_API_KEY.trim();
+            const cleanUrl = SUPABASE_URL.trim();
+
+            if (!cleanUrl || !cleanApiKey || cleanUrl.includes('[') || cleanApiKey.includes('[')) {
+                throw new Error("Credenziali Supabase mancanti o non sostituite.");
+            }
+
+            // Utilizza l'oggetto globale 'supabase' creato dal tag script UMD
+            if (typeof window.supabase === 'object' && typeof window.supabase.createClient === 'function') {
                 supabase = window.supabase.createClient(
-                    SUPABASE_URL.trim(), 
-                    SUPABASE_API_KEY.trim(), 
+                    cleanUrl,
+                    cleanApiKey,
                     {
                         db: { schema: 'public' },
                         auth: { persistSession: false },
@@ -219,17 +219,18 @@
                     }
                 );
                 console.log("Supabase Client inizializzato con successo.");
+                initialised = true; // Imposta il flag solo dopo l'inizializzazione
             } else {
-                 throw new Error("La libreria Supabase non è stata caricata correttamente.");
+                 throw new Error("La libreria Supabase non è stata caricata correttamente (window.supabase non trovato).");
             }
         } catch (e) {
             console.error("Errore fatale nell'inizializzazione di Supabase:", e);
             mainContentEl.innerHTML = `
                 <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE FATALE</h2>
-                <p class="text-gray-700 mb-4">Impossibile avviare il client Supabase. Verifica le credenziali e che il database sia configurato.</p>
+                <p class="text-gray-700 mb-4">Impossibile avviare il client Supabase. Verifica le credenziali (URL e Chiave API) e che il database sia configurato.</p>
                 <p class="text-sm text-gray-600">Errore: ${e.message}</p>
             `;
-            throw e;
+            throw e; // Blocca l'esecuzione
         }
     }
 
@@ -238,40 +239,42 @@
 
     // Recupera lo stato, i risultati e le presenze
     async function fetchSettingsAndVotes() {
-        if (!supabase) return { error: true, message: "Client Supabase non disponibile." };
+        if (!initialised || !supabase) return; // Non procedere se non inizializzato
 
         try {
-            // 1. Fetch Settings (Stato Voto e Codice)
+            // 1. Fetch Settings
             const { data: settingsData, error: settingsError } = await supabase
                 .from('settings')
                 .select('is_voting_active, required_code, last_reset')
                 .limit(1)
                 .single();
 
-            if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 = No rows returned (Prima inizializzazione)
+            if (settingsError && settingsError.code !== 'PGRST116') {
                 throw new Error("Errore fetch settings: " + settingsError.message);
             }
-            
-            // 2. Fetch Voti e Contatori (Utilizzando la funzione RPC SQL)
+
+            // 2. Fetch Voti e Contatori
             const { data: voteCounts, error: votesError } = await supabase
                 .rpc('get_vote_counts');
-            
+
             if (votesError) {
-                // Se la funzione SQL non esiste ancora, inizializziamo a zero
-                 if (votesError.code === '42883') {
-                     return { 
-                         error: false, 
-                         message: "Funzione conteggio non trovata.",
-                         counts: { attendee_count: 0, total_votes: 0, yes_votes: 0, no_votes: 0 }
-                     };
+                 if (votesError.code === '42883') { // Funzione non trovata
+                     console.warn("Funzione RPC get_vote_counts non trovata. Inizializzo a zero.");
+                     counts = { attendee_count: 0, total_votes: 0, yes_votes: 0, no_votes: 0 };
+                 } else {
+                    throw new Error("Errore fetch vote counts: " + votesError.message);
                  }
-                throw new Error("Errore fetch vote counts: " + votesError.message);
+            } else {
+                counts = voteCounts[0] || {};
             }
 
-            const counts = voteCounts[0] || {};
+
             const totalPresenti = parseInt(counts.attendee_count) || 0;
             const totalVotanti = parseInt(counts.total_votes) || 0;
-            
+            const yesVotes = parseInt(counts.yes_votes) || 0;
+            const noVotes = parseInt(counts.no_votes) || 0;
+            const abstained = totalVotanti - (yesVotes + noVotes);
+
             // 3. Verifica Registrazione e Voto utente
             const { data: checkAtt } = await supabase
                 .from('attendees')
@@ -279,7 +282,7 @@
                 .eq('user_id', userId)
                 .limit(1)
                 .single();
-            
+
             isRegistered = !!checkAtt;
 
             let checkVote = null;
@@ -293,14 +296,11 @@
                     .single();
                 checkVote = voteData;
             }
-            
-            // L'utente ha votato se esiste una riga voto E se il reset è avvenuto prima del voto
+
             if (settingsData && checkVote) {
                  const voteTimestamp = new Date(checkVote.created_at).getTime();
-                 const resetTimestamp = new Date(settingsData.last_reset).getTime();
-                 
+                 const resetTimestamp = settingsData.last_reset ? new Date(settingsData.last_reset).getTime() : 0;
                  hasVotedInCurrentRound = voteTimestamp > resetTimestamp;
-                 
             } else {
                  hasVotedInCurrentRound = false;
             }
@@ -309,21 +309,25 @@
             // Aggiorna lo stato globale
             requiredCode = settingsData ? settingsData.required_code : null;
             isVotingActive = settingsData ? settingsData.is_voting_active : false;
-            
+
             votingResults = {
-                Favorevole: parseInt(counts.yes_votes) || 0,
-                Contrario: parseInt(counts.no_votes) || 0,
-                Astenuto: totalVotanti - (parseInt(counts.yes_votes) + parseInt(counts.no_votes))
+                Favorevole: yesVotes,
+                Contrario: noVotes,
+                Astenuto: abstained < 0 ? 0 : abstained // Evita astenuti negativi
             };
-            
-            // Aggiorna l'UI Admin (se admin)
+
+            // Aggiorna l'UI Admin
             if (isAdminRole) {
                 totalAttendeesEl.textContent = totalPresenti;
                 totalVotedEl.textContent = totalVotanti;
                 const percent = totalPresenti > 0 ? Math.round((totalVotanti / totalPresenti) * 100) : 0;
                 percentVotedEl.textContent = `${percent}%`;
+                currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
+                votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
+                votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
+                toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
+                toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
             }
-
 
         } catch (e) {
             console.error("Errore nel polling/fetch dei dati:", e);
@@ -334,33 +338,35 @@
     // --- FUNZIONI DI AZIONE ADMIN ---
 
     async function handleAdminCodeUpdate() {
-        if (!isAdminRole) return;
-        
+        if (!initialised || !isAdminRole || !supabase) return;
+
         const newCode = document.getElementById('admin-set-code').value.trim();
         if (!newCode) {
             showMessage("Inserisci un codice valido.", true);
             return;
         }
-        
-        // Chiama la funzione SQL per aggiornare il codice e impostare is_voting_active=false
+
+        // Chiama la funzione RPC SQL per aggiornare
         const { error } = await supabase.rpc('update_admin_settings', {
             new_code: newCode,
-            is_voting_active: false
+            is_voting_active: false // Impostare codice disattiva sempre il voto
         });
 
         if (error) {
             console.error("Errore nell'aggiornamento codice:", error);
-            showMessage("Errore nel salvataggio del codice.", true);
+            showMessage("Errore nel salvataggio del codice. Verifica i permessi della funzione RPC.", true);
         } else {
+            requiredCode = newCode; // Aggiorna stato locale
+            isVotingActive = false;
             showMessage(`Codice impostato a ${newCode}. Votazione Disattiva.`);
+            renderApp(); // Forza aggiornamento UI
         }
     }
 
     async function handleAdminToggle() {
-        if (!isAdminRole) return; 
+        if (!initialised || !isAdminRole || !supabase) return;
         const newState = !isVotingActive;
-        
-        // Chiama la funzione SQL per aggiornare solo lo stato di voto
+
         const { error } = await supabase
             .from('settings')
             .update({ is_voting_active: newState })
@@ -370,15 +376,17 @@
             console.error("Errore nel toggle Admin:", error);
             showMessage("Errore nel cambio stato votazione.", true);
         } else {
+            isVotingActive = newState; // Aggiorna stato locale
             showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`);
+            renderApp(); // Forza aggiornamento UI
         }
     }
 
     async function handleResetResults() {
-        if (!isAdminRole) return; 
+        if (!initialised || !isAdminRole || !supabase) return;
 
         try {
-            // 1. FETCH DATI PER LOG (Conteggi finali)
+            // 1. Fetch Dati per Log
             const { data: voteCounts, error: votesError } = await supabase.rpc('get_vote_counts');
             if (votesError) throw new Error("Errore fetch vote counts: " + votesError.message);
             const counts = voteCounts[0] || {};
@@ -388,74 +396,77 @@
             const noVotes = parseInt(counts.no_votes) || 0;
             const abstained = totalVotanti - (yesVotes + noVotes);
 
-            // 2. SALVA REPORT (Log)
+            // 2. Salva Report
             const { error: logError } = await supabase
                 .from('log')
                 .insert({
                     attendee_count: totalPresenti,
                     yes_votes: yesVotes,
                     no_votes: noVotes,
-                    abstained_votes: abstained
+                    abstained_votes: abstained < 0 ? 0 : abstained
                 });
             if (logError) throw new Error("Errore nel salvataggio del log: " + logError.message);
 
-            // 3. RESET Voti e Presenze (SQL Cascade Delete)
-            const { error: delVotesError } = await supabase.from('votes').delete().neq('id', 0);
-            const { error: delAttError } = await supabase.from('attendees').delete().neq('id', 0);
-            if (delVotesError || delAttError) throw new Error("Errore durante la pulizia delle tabelle.");
+            // 3. Reset Voti e Presenze
+            await supabase.from('votes').delete().neq('id', 0);
+            await supabase.from('attendees').delete().neq('id', 0);
 
-            // 4. AGGIORNA TIMESTAMP RESET SETTINGS
+            // 4. Aggiorna Timestamp Reset Settings
             const { error: updateError } = await supabase
                 .from('settings')
-                .update({ 
+                .update({
                     last_reset: new Date().toISOString(),
-                    is_voting_active: false // Di default disattiva dopo il reset
+                    is_voting_active: false // Disattiva dopo il reset
                 })
                 .eq('id', 1);
             if (updateError) throw new Error("Errore nell'aggiornamento del timestamp.");
 
-            showMessage(`Risultati salvati (Tot. Votanti: ${totalVotanti}). Voti azzerati.`);
+            // Resetta stato locale
+            hasVotedInCurrentRound = false;
+            isRegistered = false; // Forza la registrazione per il prossimo collegio/voto
+            showMessage(`Risultati salvati. Voti e presenze azzerati.`);
+            renderApp();
 
         } catch (e) {
             console.error("Errore nel reset dei voti:", e);
             showMessage("ERRORE: Reset fallito. Controlla la console.", true);
         }
     }
-    
-    async function handleResetProject() {
-        if (!isAdminRole) return;
 
-        // Richiesta di conferma
-        if (!confirm('Sei sicuro di voler eseguire il RESET TOTALE? Questa azione cancellerà tutti i dati di presenze, voti e lo storico dei log!')) {
-            return;
-        }
+    async function handleResetProject() {
+        if (!initialised || !isAdminRole || !supabase) return;
+
+        if (!confirm('RESET TOTALE? Cancellerà tutti i dati!')) return;
 
         try {
-            // 1. Pulisce tutte le tabelle
             await supabase.from('votes').delete().neq('id', 0);
             await supabase.from('attendees').delete().neq('id', 0);
             await supabase.from('log').delete().neq('id', 0);
-
-            // 2. Resetta le impostazioni iniziali
             await supabase.from('settings').update({
                 required_code: null,
                 is_voting_active: false,
                 last_reset: new Date().toISOString()
             }).eq('id', 1);
 
-            showMessage("RESET TOTALE DEL PROGETTO ESEGUITO. Il database è pulito.");
+            // Resetta stato locale
+            requiredCode = null;
+            isVotingActive = false;
+            isRegistered = false;
+            hasVotedInCurrentRound = false;
+            showMessage("RESET TOTALE ESEGUITO.");
+            renderApp();
 
         } catch (e) {
             console.error("Errore nel reset totale:", e);
-            showMessage("ERRORE: Il reset totale è fallito. Controlla la console.", true);
+            showMessage("ERRORE: Reset totale fallito.", true);
         }
     }
-    
+
     async function showDeliberationsLog() {
-        if (!isAdminRole) return;
+        if (!initialised || !isAdminRole || !supabase) return;
         isViewingLog = true;
-        mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico delle delibere...</p>';
-        
+        mainContentEl.innerHTML = '<p class="text-center text-gray-500">Caricamento log storico...</p>';
+
         try {
             const { data, error } = await supabase
                 .from('log')
@@ -463,20 +474,20 @@
                 .order('created_at', { ascending: false });
 
             if (error) throw new Error(error.message);
-            
+
             let logHtml = data.length === 0
-                ? '<p class="text-center text-gray-500 p-4">Nessuna votazione storica salvata finora.</p>'
+                ? '<p class="text-center text-gray-500 p-4">Nessun log salvato.</p>'
                 : `<div class="log-list space-y-4">
                     ${data.map((row, index) => {
-                        const totalVoti = row.yes_votes + row.no_votes + row.abstained_votes;
+                        const totalVoti = (row.yes_votes || 0) + (row.no_votes || 0) + (row.abstained_votes || 0);
                         return `
                             <div class="p-3 border rounded-lg shadow-sm bg-white">
                                 <p class="text-sm font-bold text-gray-800 mb-1">Delibera #${data.length - index} - Voti: ${totalVoti} / Presenti: ${row.attendee_count || 'N/A'}</p>
                                 <p class="text-xs text-gray-500 mb-2">${formatTimestamp(row.created_at)}</p>
                                 <div class="grid grid-cols-3 gap-1 text-xs font-semibold">
-                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${row.yes_votes}</span>
-                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${row.no_votes}</span>
-                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${row.abstained_votes}</span>
+                                    <span class="p-1 bg-green-100 text-green-700 rounded text-center">F: ${row.yes_votes || 0}</span>
+                                    <span class="p-1 bg-red-100 text-red-700 rounded text-center">C: ${row.no_votes || 0}</span>
+                                    <span class="p-1 bg-yellow-100 text-yellow-700 rounded text-center">A: ${row.abstained_votes || 0}</span>
                                 </div>
                             </div>
                         `;
@@ -496,8 +507,8 @@
             });
 
         } catch (e) {
-            console.error("Errore nel caricamento log storico:", e);
-            mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento del log storico.</p>';
+            console.error("Errore caricamento log:", e);
+            mainContentEl.innerHTML = '<p class="text-center text-red-500">Errore nel caricamento del log.</p>';
         }
     }
 
@@ -505,29 +516,30 @@
     // --- FUNZIONI DI AZIONE UTENTE ---
 
     async function handleRegistration() {
+        if (!initialised || !supabase) return;
+
         const nome = document.getElementById('nome').value.trim();
         const cognome = document.getElementById('cognome').value.trim();
         const codice = document.getElementById('codice').value.trim();
 
         if (!nome || !cognome || !codice) {
-            showMessage("Per favore, compila tutti i campi.", true);
+            showMessage("Compila tutti i campi.", true);
             return;
         }
 
-        if (requiredCode === null || requiredCode === 'null') {
-             showMessage("L'amministratore non ha ancora impostato il codice di accesso.", true);
+        if (requiredCode === null || requiredCode === 'null' || requiredCode === '') {
+             showMessage("Codice accesso NON impostato.", true);
              return;
         }
-        
-        // La comparazione è sicura in JS (non usiamo ===)
+
         if (codice != requiredCode) {
-            showMessage("Codice univoco errato. Per favore, verifica.", true);
+            showMessage("Codice univoco errato.", true);
             return;
         }
-        
+
         try {
-            // Verifica se è già presente (usando il nome e cognome per identificazione umana)
-            const { data: existing, error: checkError } = await supabase
+            // Verifica se già presente
+            const { data: existing } = await supabase
                 .from('attendees')
                 .select('id')
                 .eq('first_name', nome)
@@ -536,12 +548,12 @@
 
             if (existing && existing.length > 0) {
                  isRegistered = true;
-                 showMessage("Sei già stato registrato/a. Passaggio al voto.");
+                 showMessage("Già registrato/a. Vai al voto.");
                  renderApp();
                  return;
             }
 
-            // Inserisci nella tabella 'attendees'
+            // Inserisci
             const { error } = await supabase
                 .from('attendees')
                 .insert({
@@ -550,31 +562,33 @@
                     last_name: cognome,
                     access_code: codice
                 });
-            
+
             if (error) throw new Error(error.message);
-            
+
             isRegistered = true;
-            showMessage(`Registrazione di ${nome} ${cognome} completata! Benvenuto/a.`);
+            showMessage(`Registrazione di ${nome} ${cognome} completata.`);
             renderApp();
-            
+
         } catch (e) {
-            console.error("Errore durante la registrazione: ", e);
-            showMessage("Errore nel salvataggio della registrazione. Riprova.", true);
+            console.error("Errore registrazione: ", e);
+            showMessage("Errore salvataggio registrazione.", true);
         }
     }
 
     async function handleVote(choice) {
+        if (!initialised || !supabase) return;
+
         if (!isVotingActive) {
-            showMessage("La votazione è attualmente disattivata dall'amministrazione.", true);
+            showMessage("Votazione disattivata.", true);
             return;
         }
         if (hasVotedInCurrentRound) {
-            showMessage("Hai già espresso il tuo voto in questa sessione. Attendi il prossimo voto.", true);
+            showMessage("Hai già votato.", true);
             return;
         }
-        
-        // TRUE = Favorevole, FALSE = Contrario, Astenuto
-        let voteValue = (choice === 'Favorevole'); 
+
+        // TRUE = Favorevole, FALSE = Contrario/Astenuto
+        let voteValue = (choice === 'Favorevole');
         let voteText = choice;
 
 
@@ -590,14 +604,13 @@
 
             if (error) throw new Error(error.message);
 
-            // Stato locale aggiornato per prevenire il doppio voto immediato
             hasVotedInCurrentRound = true;
-            
-            showMessage(`Voto espresso: ${choice}. Grazie!`);
-            
+            showMessage(`Voto espresso: ${choice}.`);
+            renderApp(); // Aggiorna UI per mostrare voto registrato
+
         } catch (e) {
-            console.error("Errore durante la votazione: ", e);
-            showMessage("Errore durante l'invio del voto. Riprova.", true);
+            console.error("Errore votazione: ", e);
+            showMessage("Errore invio voto.", true);
         }
     }
 
@@ -605,27 +618,26 @@
     // --- RENDERING DELL'APPLICAZIONE ---
 
     function renderApp() {
-        if (!initialised) return;
-        if (isViewingLog) return; 
-        
+        if (!initialised) return; // Non renderizzare se Supabase non è pronto
+        if (isViewingLog) return;
+
         if (isAdminRole) {
             renderAdminDashboard();
         } else {
             renderUserInterface();
+        }
+        // Attiva icone Lucide
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
         }
     }
 
     function renderAdminDashboard() {
         adminPanelEl.classList.remove('hidden');
         if (isViewingLog) return; // Non sovrascrivere il log
-        
-        // Logica di aggiornamento dinamico (già gestita nel polling)
-        votingStatusTextEl.textContent = isVotingActive ? 'ATTIVO' : 'DISATTIVO';
-        votingStatusTextEl.className = isVotingActive ? 'font-bold text-green-600' : 'font-bold text-red-600';
-        toggleVotingBtn.textContent = isVotingActive ? 'Disattiva Votazione' : 'Attiva Votazione';
-        toggleVotingBtn.className = isVotingActive ? 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-green-600 hover:bg-green-700 shadow-md' : 'w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-red-600 hover:bg-red-700 shadow-md';
-        
-        currentRequiredCodeEl.textContent = requiredCode || 'Nessuno';
+
+        // Aggiornamento dinamico UI Admin (già gestito nel polling)
+        // ... (codice già presente e corretto)
 
         mainContentEl.innerHTML = `
             <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
@@ -648,7 +660,7 @@
             <p class="text-center text-sm text-gray-600 mt-4">Risultati aggiornati ogni secondo.</p>
         `;
     }
-    
+
     function renderUserInterface() {
         if (!isRegistered) {
             renderRegistrationPage();
@@ -661,49 +673,53 @@
         const savedNome = document.getElementById('nome')?.value || '';
         const savedCognome = document.getElementById('cognome')?.value || '';
         const savedCodice = document.getElementById('codice')?.value || '';
-        
+
         const codeValid = requiredCode !== null && requiredCode !== 'null' && requiredCode !== '';
-        
+
         const codeStatus = codeValid
-            ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice di accesso ATTIVO.</p>'
-            : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice di accesso NON impostato. Attendi.</p>';
-        
+            ? '<p class="text-sm text-green-600 text-center font-semibold mb-4">Codice accesso ATTIVO.</p>'
+            : '<p class="text-sm text-red-600 text-center font-semibold mb-4">Codice accesso NON impostato.</p>';
+
         const isButtonDisabled = !codeValid || isRegistered;
-        
+
         mainContentEl.innerHTML = `
             <h2 class="text-2xl font-extrabold text-gray-900 text-center mb-6">
                 <span class="text-blue-600">Registro</span> Presenze
             </h2>
             <div class="p-3 mb-4 rounded-xl bg-gray-50 border border-gray-200">
-                <p class="text-sm text-gray-600 text-center">ID Utente: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || 'Caricamento...'}</span></p>
+                <p class="text-sm text-gray-600 text-center">ID Utente: <span class="font-mono text-xs bg-gray-200 p-1 rounded">${userId || '...'}</span></p>
             </div>
-            ${isRegistered ? 
-                '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata. Vai al voto!</p>'
+            ${isRegistered ?
+                '<p class="text-lg text-green-600 font-bold text-center mb-4">Presenza Registrata.</p>'
                 : codeStatus
             }
             <div class="space-y-4">
                 <input type="text" id="nome" placeholder="Nome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedNome}" ${isRegistered ? 'disabled' : ''}/>
                 <input type="text" id="cognome" placeholder="Cognome" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedCognome}" ${isRegistered ? 'disabled' : ''}/>
                 <input type="text" id="codice" placeholder="Codice Univoco Collegio" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 transition" value="${savedCodice}" ${isRegistered ? 'disabled' : ''}/>
-                
+
                 <button id="register-btn" class="w-full py-3 px-4 rounded-xl text-white font-semibold transition duration-150 ease-in-out bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg ${isButtonDisabled ? 'opacity-50 cursor-not-allowed' : ''}" ${isButtonDisabled ? 'disabled' : ''}>
                     Registra Presenza
                 </button>
             </div>
         `;
-        document.getElementById('register-btn')?.addEventListener('click', handleRegistration);
+        // Collega l'evento solo se il pulsante esiste
+        const regBtn = document.getElementById('register-btn');
+        if (regBtn) {
+            regBtn.addEventListener('click', handleRegistration);
+        }
     }
 
     function renderVotingPage() {
         const statusClass = isVotingActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
-        const statusText = isVotingActive ? 'Votazione Attiva: Esprimi il tuo voto.' : 'Votazione Chiusa: Attendi l\'attivazione.';
+        const statusText = isVotingActive ? 'Votazione Attiva: Esprimi il tuo voto.' : 'Votazione Chiusa.';
         const isDisabled = !isVotingActive || hasVotedInCurrentRound;
         const disabledClass = isDisabled ? 'opacity-50 cursor-not-allowed' : '';
         const votedClass = hasVotedInCurrentRound ? 'bg-blue-800 text-white' : '';
-        
+
         let voteMessage = '';
         if (hasVotedInCurrentRound) {
-            voteMessage = '<p class="text-center text-sm text-blue-700 p-2 bg-blue-50 rounded-lg font-bold">Voto Registrato. Grazie!</p>';
+            voteMessage = '<p class="text-center text-sm text-blue-700 p-2 bg-blue-50 rounded-lg font-bold">Voto Registrato.</p>';
         }
 
         mainContentEl.innerHTML = `
@@ -713,17 +729,17 @@
             <div class="p-4 rounded-xl mb-6 font-semibold text-center ${statusClass}">
                 ${statusText}
             </div>
-            
+
             ${voteMessage}
-            
+
             <div class="grid grid-cols-1 gap-4">
                 <button data-vote="Favorevole" ${isDisabled ? 'disabled' : ''} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-green-600 hover:bg-green-700 ${disabledClass} ${votedClass} shadow-lg">
                     Favorevole
                 </button>
-                <button data-vote="Contrario" ${isDisabled ? 'disabled' : ''} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-red-600 hover:bg-red-700 ${disabledClass} ${votedClass} shadow-lg">
+                <button data-vote="Contrario/a" ${isDisabled ? 'disabled' : ''} class="vote-btn py-5 px-4 rounded-xl text-white font-bold text-lg bg-red-600 hover:bg-red-700 ${disabledClass} ${votedClass} shadow-lg">
                     Contrario/a
                 </button>
-                <button data-vote="Astenuto" ${isDisabled ? 'disabled' : ''} class="vote-btn py-5 px-4 rounded-xl text-gray-800 font-bold text-lg bg-yellow-400 hover:bg-yellow-500 ${disabledClass} ${votedClass} shadow-lg">
+                <button data-vote="Astenuto/a" ${isDisabled ? 'disabled' : ''} class="vote-btn py-5 px-4 rounded-xl text-gray-800 font-bold text-lg bg-yellow-400 hover:bg-yellow-500 ${disabledClass} ${votedClass} shadow-lg">
                     Astenuto/a
                 </button>
             </div>
@@ -737,32 +753,49 @@
 
     // --- INIZIALIZZAZIONE ---
 
+    // La funzione initApp ora viene chiamata solo DOPO il caricamento del DOM
     function initApp() {
-        if (!initialised) {
-            initializeSupabase();
-            
-            if (!supabase) return; 
+        if (!initialised) { // Evita reinizializzazioni
+            try {
+                initializeSupabase(); // Tentativo di inizializzazione
+            } catch (e) {
+                return; // Blocca se l'inizializzazione fallisce
+            }
 
             userId = getUserId();
             isAdminRole = getUrlParameter('role') === 'admin';
-            
+
+            // Associa le variabili agli elementi Admin solo DOPO che il DOM è pronto
+            totalAttendeesEl = document.getElementById('total-attendees');
+            totalVotedEl = document.getElementById('total-voted');
+            percentVotedEl = document.getElementById('percent-voted');
+            toggleVotingBtn = document.getElementById('toggle-voting-btn');
+            resetResultsBtn = document.getElementById('reset-results-btn');
+            updateCodeBtn = document.getElementById('update-code-btn');
+            votingStatusTextEl = document.getElementById('voting-status-text');
+            currentRequiredCodeEl = document.getElementById('current-required-code');
+            showDeliberationsBtn = document.getElementById('show-deliberations-btn');
+            resetProjectBtn = document.getElementById('reset-project-btn');
+
             if (isAdminRole) {
                 adminPanelEl.classList.remove('hidden');
                 // Aggiunge i listener per i pulsanti Admin (una sola volta)
-                updateCodeBtn.addEventListener('click', handleAdminCodeUpdate);
-                toggleVotingBtn.addEventListener('click', handleAdminToggle);
-                resetResultsBtn.addEventListener('click', handleResetResults);
-                showDeliberationsBtn.addEventListener('click', showDeliberationsLog); 
-                resetProjectBtn.addEventListener('click', handleResetProject);
-                
-                mainContentEl.classList.remove('container-card');
-                
+                updateCodeBtn?.addEventListener('click', handleAdminCodeUpdate);
+                toggleVotingBtn?.addEventListener('click', handleAdminToggle);
+                resetResultsBtn?.addEventListener('click', handleResetResults);
+                showDeliberationsBtn?.addEventListener('click', showDeliberationsLog);
+                resetProjectBtn?.addEventListener('click', handleResetProject);
+
+                //mainContentEl.classList.remove('container-card'); // Non rimuovere la card
+
             } else {
-                adminPanelEl.remove(); // Rimuove completamente il pannello dall'interfaccia utente
+                adminPanelEl?.remove(); // Rimuove completamente il pannello
             }
 
-            initialised = true;
-            startPollingLoop();
+            // Avvia il loop di polling solo se inizializzato
+            if (initialised) {
+                startPollingLoop();
+            }
         }
     }
 
@@ -770,24 +803,27 @@
     function startPollingLoop() {
         setInterval(async () => {
             if (!initialised || isViewingLog) return;
-            
-            await fetchSettingsAndVotes();
-            
-            const isCurrentlyOnRegistrationForm = mainContentEl.querySelector('#nome') !== null;
-            
-            // Aggiorna l'interfaccia SOLO se non stiamo digitando
-            if (!isCurrentlyOnRegistrationForm) {
-                renderApp();
+
+            await fetchSettingsAndVotes(); // Recupera sempre i dati
+
+            // Aggiorna l'interfaccia se non si sta digitando
+            const activeElement = document.activeElement;
+            const isTyping = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+
+            if (!isTyping) {
+                 renderApp();
             }
 
         }, 1000); // Polling ogni 1 secondo
     }
 
 
-    window.onload = function() {
+    // Attendere il caricamento completo del DOM prima di inizializzare
+    document.addEventListener('DOMContentLoaded', function() {
         initApp();
+        // Fallback per garantire il rendering iniziale dopo che il DOM è pronto
         if (initialised) renderApp();
-    };
+    });
 
 </script>
 </body>
