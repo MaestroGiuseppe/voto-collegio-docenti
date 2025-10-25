@@ -68,19 +68,38 @@
         const supabaseSrc = `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js?v=${Date.now()}`;
         const lucideSrc = `https://unpkg.com/lucide@latest/dist/umd/lucide.js?v=${Date.now()}`;
 
-        const supabaseScript = document.createElement('script');
-        supabaseScript.src = supabaseSrc;
-        document.head.appendChild(supabaseScript);
-
-        const lucideScript = document.createElement('script');
-        lucideScript.src = lucideSrc;
-        lucideScript.onload = () => {
-             // Chiama createIcons solo dopo che Lucide è caricato
-             if (typeof lucide !== 'undefined') {
-                 lucide.createIcons();
-             }
+        // Funzione per caricare script in modo asincrono
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
         }
-        document.head.appendChild(lucideScript);
+
+        // Carica le librerie e poi inizializza l'app
+        Promise.all([
+            loadScript(supabaseSrc),
+            loadScript(lucideSrc)
+        ])
+        .then(() => {
+            console.log("Librerie Supabase e Lucide caricate.");
+            // Inizializza l'app solo dopo il caricamento delle librerie e del DOM
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initApp);
+            } else {
+                initApp(); // Se il DOM è già pronto
+            }
+        })
+        .catch(error => {
+            console.error("Errore nel caricamento delle librerie:", error);
+            const mainContentEl = document.getElementById('main-content');
+            if(mainContentEl) {
+                mainContentEl.innerHTML = `<p class="text-center text-red-500">Errore critico: impossibile caricare le librerie necessarie. Ricarica la pagina.</p>`;
+            }
+        });
     </script>
 
 </head>
@@ -220,6 +239,7 @@
 
     // Inizializza Supabase (Corretto l'errore di scoping e pulizia chiave)
     function initializeSupabase() {
+        // Questa funzione viene chiamata DOPO che lo script Supabase è stato caricato
         try {
             // Pulizia preventiva della chiave API da eventuali spazi
             const cleanApiKey = SUPABASE_API_KEY.trim();
@@ -230,7 +250,6 @@
             }
 
             // Utilizza l'oggetto globale 'supabase' creato dal tag script UMD
-            // Controlla che window.supabase e createClient esistano PRIMA di chiamarli
             if (typeof window.supabase === 'object' && typeof window.supabase.createClient === 'function') {
                 supabase = window.supabase.createClient(
                     cleanUrl,
@@ -248,10 +267,8 @@
                 console.log("Supabase Client inizializzato con successo.");
                 initialised = true; // Imposta il flag solo dopo l'inizializzazione
             } else {
-                 // Attendi che la libreria venga caricata se non è ancora pronta
-                 console.warn("Libreria Supabase non ancora caricata. Riprovo tra poco...");
-                 setTimeout(initializeSupabase, 100); // Riprova dopo 100ms
-                 return; // Esce dalla funzione corrente
+                 // Questo errore non dovrebbe più accadere grazie al caricamento asincrono
+                 throw new Error("La libreria Supabase non è definita globalmente (window.supabase).");
             }
         } catch (e) {
             console.error("Errore fatale nell'inizializzazione di Supabase:", e);
@@ -284,7 +301,6 @@
 
             // Gestione errore 401 (Permessi) o altri errori DB
             if (settingsError && settingsError.code !== 'PGRST116') { // Ignora solo "nessuna riga trovata"
-                // Mostra errore specifico se 401 o permessi
                  if (settingsError.code === '42501' || settingsError.message.includes('permission denied')) {
                      showMessage("Errore permessi database (RLS). Esegui lo script SQL.", true);
                  } else {
@@ -300,7 +316,7 @@
                 .rpc('get_vote_counts');
 
             if (votesError) {
-                 if (votesError.code === '42883') { // Funzione non trovata
+                 if (votesError.code === '42883') {
                      console.warn("Funzione RPC get_vote_counts non trovata. Esegui lo script SQL.");
                  } else if (votesError.code === '42501') {
                       showMessage("Errore permessi RPC get_vote_counts. Esegui lo script SQL.", true);
@@ -320,16 +336,14 @@
             const noVotes = parseInt(counts.no_votes) || 0;
             const abstained = totalVotanti - (yesVotes + noVotes);
 
-            // 3. Verifica Registrazione e Voto utente (solo se non admin, per ottimizzare)
+            // 3. Verifica Registrazione e Voto utente (solo se non admin)
              if (!isAdminRole) {
-                 // Usa count per efficienza
                 const { count: regCount } = await supabase
                     .from('attendees')
                     .select('id', { count: 'exact', head: true })
                     .eq('user_id', userId);
 
                 isRegistered = (regCount !== null && regCount > 0);
-
 
                 let checkVote = null;
                 if (isRegistered) {
@@ -360,7 +374,7 @@
             votingResults = {
                 Favorevole: yesVotes,
                 Contrario: noVotes,
-                Astenuto: abstained < 0 ? 0 : abstained // Evita astenuti negativi
+                Astenuto: abstained < 0 ? 0 : abstained
             };
 
             // Aggiorna l'UI Admin (SOLO SE gli elementi esistono)
@@ -394,35 +408,33 @@
             return;
         }
 
-        // Usa UPDATE diretto (più affidabile se RPC fallisce)
-        const { error } = await supabase
-            .from('settings')
-            .update({
-                required_code: newCode,
-                is_voting_active: false // Impostare codice disattiva sempre il voto
-             })
-            .eq('id', 1); // Aggiorna solo la riga 1
+        // Usa RPC con SECURITY INVOKER
+        const { error } = await supabase.rpc('update_admin_settings', {
+            new_code: newCode,
+            is_voting_active: false // Impostare codice disattiva sempre il voto
+        });
 
         if (error) {
-            console.error("Errore nell'aggiornamento codice:", error);
-            if (error.code === '42501' || error.message.includes('permission denied')) {
-                 showMessage("Errore permessi UPDATE settings. Esegui lo script SQL.", true);
+            console.error("Errore nell'aggiornamento codice via RPC:", error);
+             if (error.code === '42501' || error.message.includes('permission denied')) {
+                 showMessage("Errore permessi funzione RPC. Esegui lo script SQL.", true);
              } else {
                  showMessage("Errore nel salvataggio del codice.", true);
              }
         } else {
-            requiredCode = newCode; // Aggiorna stato locale
+            requiredCode = newCode;
             isVotingActive = false;
             showMessage(`Codice impostato a ${newCode}. Votazione Disattiva.`);
             renderApp(); // Forza aggiornamento UI
         }
     }
 
+
     async function handleAdminToggle() {
         if (!initialised || !isAdminRole || !supabase) return;
         const newState = !isVotingActive;
 
-        // Aggiornamento diretto della tabella (affidabile se RLS è ok)
+        // Aggiornamento diretto della tabella
         const { error } = await supabase
             .from('settings')
             .update({ is_voting_active: newState })
@@ -436,9 +448,9 @@
                  showMessage("Errore nel cambio stato votazione.", true);
              }
         } else {
-            isVotingActive = newState; // Aggiorna stato locale
+            isVotingActive = newState;
             showMessage(`Votazione ${newState ? 'ATTIVATA' : 'DISATTIVATA'}.`);
-            renderApp(); // Forza aggiornamento UI
+            renderApp();
         }
     }
 
@@ -482,7 +494,6 @@
 
             // Resetta stato locale
             hasVotedInCurrentRound = false;
-            // isRegistered = false; // Non resettare la registrazione qui
             showMessage(`Risultati salvati. Voti azzerati per la prossima delibera.`);
             renderApp();
 
@@ -654,7 +665,7 @@
 
         // TRUE = Favorevole, FALSE = Contrario/Astenuto
         let voteValue = (choice === 'Favorevole');
-        let voteText = choice;
+        let voteText = choice; // Salva il testo esatto per chiarezza nel DB
 
 
         try {
@@ -697,7 +708,11 @@
         }
         // Attiva icone Lucide
         if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-            lucide.createIcons();
+            try {
+                lucide.createIcons();
+            } catch (iconError) {
+                console.warn("Errore durante l'attivazione delle icone Lucide:", iconError);
+            }
         } else {
              console.warn("Libreria Lucide non pronta per createIcons().");
         }
@@ -832,16 +847,34 @@
 
     // --- INIZIALIZZAZIONE ---
 
-    // La funzione initApp ora viene chiamata solo DOPO il caricamento del DOM
+    // La funzione initApp ora viene chiamata solo DOPO il caricamento delle librerie e del DOM
     function initApp() {
         if (!initialised) { // Evita reinizializzazioni
             try {
+                // L'inizializzazione ora avviene DOPO il caricamento script
+                // Quindi non dovrebbe più fallire qui.
+                 if (typeof window.supabase !== 'object' || typeof window.supabase.createClient !== 'function') {
+                     throw new Error("Supabase non caricato correttamente.");
+                 }
                 initializeSupabase(); // Tentativo di inizializzazione
-                // Se initializeSupabase fallisce, initialised rimane false
-                if(!initialised) return; // Esce se l'init non è andato a buon fine
             } catch (e) {
+                // Se fallisce qui, mostra l'errore staticamente
+                if(!mainContentEl.innerHTML.includes('ERRORE FATALE')) {
+                     mainContentEl.innerHTML = `
+                        <h2 class="text-2xl font-extrabold text-red-700 text-center mb-6">ERRORE FATALE</h2>
+                        <p class="text-gray-700 mb-4">Impossibile avviare Supabase.</p>
+                        <p class="text-sm text-gray-600">Errore: ${e.message}</p>
+                    `;
+                }
                 return; // Blocca se l'inizializzazione fallisce
             }
+
+            // Procedi solo se l'inizializzazione ha avuto successo
+            if (!initialised) {
+                 console.error("Inizializzazione Supabase fallita silenziosamente.");
+                 return;
+            }
+
 
             userId = getUserId();
             isAdminRole = getUrlParameter('role') === 'admin';
@@ -917,13 +950,9 @@
     }
 
 
-    // Attendere il caricamento completo del DOM prima di inizializzare
-    document.addEventListener('DOMContentLoaded', function() {
-        initApp();
-        // Fallback per garantire il rendering iniziale dopo che il DOM è pronto
-        // if (initialised) renderApp(); // Rimosso: fetch iniziale si occupa del primo render
-    });
+    // Il punto di ingresso è ora gestito dalla promessa di caricamento degli script nell'HEAD
 
 </script>
 </body>
 </html>
+
