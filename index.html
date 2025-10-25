@@ -4,8 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Votazione Collegio Docenti</title>
-    <!-- Caricamento di Tailwind CSS per lo styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Caricamento di Tailwind CSS con Cache Busting -->
+    <script>
+        // Aggiunge un timestamp per forzare il ricaricamento
+        const tailwindSrc = `https://cdn.tailwindcss.com?v=${Date.now()}`;
+        const scriptTag = document.createElement('script');
+        scriptTag.src = tailwindSrc;
+        document.head.appendChild(scriptTag);
+    </script>
     <style>
         /* Stile personalizzato per il corpo e i pulsanti */
         body {
@@ -57,10 +63,26 @@
             }
         }
     </script>
-    <!-- Libreria Supabase (Versione UMD per compatibilità HTML) -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <!-- Libreria Lucide (Icone) -->
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <!-- Librerie Supabase e Lucide con Cache Busting -->
+    <script>
+        const supabaseSrc = `https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js?v=${Date.now()}`;
+        const lucideSrc = `https://unpkg.com/lucide@latest/dist/umd/lucide.js?v=${Date.now()}`;
+
+        const supabaseScript = document.createElement('script');
+        supabaseScript.src = supabaseSrc;
+        document.head.appendChild(supabaseScript);
+
+        const lucideScript = document.createElement('script');
+        lucideScript.src = lucideSrc;
+        lucideScript.onload = () => {
+             // Chiama createIcons solo dopo che Lucide è caricato
+             if (typeof lucide !== 'undefined') {
+                 lucide.createIcons();
+             }
+        }
+        document.head.appendChild(lucideScript);
+    </script>
+
 </head>
 <body>
 
@@ -208,6 +230,7 @@
             }
 
             // Utilizza l'oggetto globale 'supabase' creato dal tag script UMD
+            // Controlla che window.supabase e createClient esistano PRIMA di chiamarli
             if (typeof window.supabase === 'object' && typeof window.supabase.createClient === 'function') {
                 supabase = window.supabase.createClient(
                     cleanUrl,
@@ -225,7 +248,10 @@
                 console.log("Supabase Client inizializzato con successo.");
                 initialised = true; // Imposta il flag solo dopo l'inizializzazione
             } else {
-                 throw new Error("La libreria Supabase non è stata caricata correttamente (window.supabase non trovato).");
+                 // Attendi che la libreria venga caricata se non è ancora pronta
+                 console.warn("Libreria Supabase non ancora caricata. Riprovo tra poco...");
+                 setTimeout(initializeSupabase, 100); // Riprova dopo 100ms
+                 return; // Esce dalla funzione corrente
             }
         } catch (e) {
             console.error("Errore fatale nell'inizializzazione di Supabase:", e);
@@ -258,7 +284,7 @@
 
             // Gestione errore 401 (Permessi) o altri errori DB
             if (settingsError && settingsError.code !== 'PGRST116') { // Ignora solo "nessuna riga trovata"
-                // Mostra errore specifico se 401
+                // Mostra errore specifico se 401 o permessi
                  if (settingsError.code === '42501' || settingsError.message.includes('permission denied')) {
                      showMessage("Errore permessi database (RLS). Esegui lo script SQL.", true);
                  } else {
@@ -296,12 +322,14 @@
 
             // 3. Verifica Registrazione e Voto utente (solo se non admin, per ottimizzare)
              if (!isAdminRole) {
-                const { data: checkAtt } = await supabase
+                 // Usa count per efficienza
+                const { count: regCount } = await supabase
                     .from('attendees')
-                    .select('id', { count: 'exact', head: true }) // Usa head per efficienza
+                    .select('id', { count: 'exact', head: true })
                     .eq('user_id', userId);
 
-                isRegistered = checkAtt.count > 0;
+                isRegistered = (regCount !== null && regCount > 0);
+
 
                 let checkVote = null;
                 if (isRegistered) {
@@ -332,7 +360,7 @@
             votingResults = {
                 Favorevole: yesVotes,
                 Contrario: noVotes,
-                Astenuto: abstained < 0 ? 0 : abstained
+                Astenuto: abstained < 0 ? 0 : abstained // Evita astenuti negativi
             };
 
             // Aggiorna l'UI Admin (SOLO SE gli elementi esistono)
@@ -366,17 +394,19 @@
             return;
         }
 
-        // Usa RPC con SECURITY INVOKER (deve funzionare se RLS è ok)
-        const { error } = await supabase.rpc('update_admin_settings', {
-            new_code: newCode,
-            is_voting_active: false // Impostare codice disattiva sempre il voto
-        });
+        // Usa UPDATE diretto (più affidabile se RPC fallisce)
+        const { error } = await supabase
+            .from('settings')
+            .update({
+                required_code: newCode,
+                is_voting_active: false // Impostare codice disattiva sempre il voto
+             })
+            .eq('id', 1); // Aggiorna solo la riga 1
 
         if (error) {
-            console.error("Errore nell'aggiornamento codice via RPC:", error);
-            // Mostra messaggio specifico per errore permessi
-             if (error.code === '42501' || error.message.includes('permission denied for function')) {
-                 showMessage("Errore permessi funzione RPC. Esegui lo script SQL.", true);
+            console.error("Errore nell'aggiornamento codice:", error);
+            if (error.code === '42501' || error.message.includes('permission denied')) {
+                 showMessage("Errore permessi UPDATE settings. Esegui lo script SQL.", true);
              } else {
                  showMessage("Errore nel salvataggio del codice.", true);
              }
@@ -437,9 +467,8 @@
                 });
             if (logError) throw new Error("Errore nel salvataggio del log: " + logError.message);
 
-            // 3. Reset Voti e Presenze
+            // 3. Reset Voti (NON le presenze)
             await supabase.from('votes').delete().neq('id', 0);
-            //await supabase.from('attendees').delete().neq('id', 0); // NON CANCELLARE LE PRESENZE AD OGNI VOTO
 
             // 4. Aggiorna Timestamp Reset Settings
             const { error: updateError } = await supabase
@@ -572,13 +601,13 @@
 
         try {
             // Verifica se già presente (usando user_id)
-            const { data: existing, count } = await supabase
+            const { count } = await supabase
                 .from('attendees')
                 .select('id', { count: 'exact', head: true })
                 .eq('user_id', userId);
 
 
-            if (count > 0) {
+            if (count !== null && count > 0) {
                  isRegistered = true;
                  showMessage("Già registrato/a. Vai al voto.");
                  renderApp();
@@ -667,8 +696,10 @@
             renderUserInterface();
         }
         // Attiva icone Lucide
-        if (typeof lucide !== 'undefined') {
+        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
             lucide.createIcons();
+        } else {
+             console.warn("Libreria Lucide non pronta per createIcons().");
         }
     }
 
@@ -747,7 +778,9 @@
         // Collega l'evento solo se il pulsante esiste
         const regBtn = document.getElementById('register-btn');
         if (regBtn) {
-            regBtn.addEventListener('click', handleRegistration);
+            // Rimuovi eventuali listener precedenti per evitare duplicazioni
+             regBtn.replaceWith(regBtn.cloneNode(true));
+             document.getElementById('register-btn').addEventListener('click', handleRegistration);
         }
     }
 
@@ -788,7 +821,10 @@
         // Aggiunge i listener dopo il rendering
         mainContentEl.querySelectorAll('.vote-btn').forEach(button => {
             if (!isDisabled) { // Aggiungi listener solo se i pulsanti non sono disabilitati
-                button.addEventListener('click', (e) => handleVote(e.currentTarget.dataset.vote));
+                 // Rimuovi eventuali listener precedenti
+                 button.replaceWith(button.cloneNode(true));
+                 mainContentEl.querySelector(`[data-vote="${button.dataset.vote}"]`)
+                     .addEventListener('click', (e) => handleVote(e.currentTarget.dataset.vote));
             }
         });
     }
@@ -801,9 +837,10 @@
         if (!initialised) { // Evita reinizializzazioni
             try {
                 initializeSupabase(); // Tentativo di inizializzazione
+                // Se initializeSupabase fallisce, initialised rimane false
+                if(!initialised) return; // Esce se l'init non è andato a buon fine
             } catch (e) {
-                // L'errore è già mostrato da initializeSupabase
-                return; // Blocca l'esecuzione se l'inizializzazione fallisce
+                return; // Blocca se l'inizializzazione fallisce
             }
 
             userId = getUserId();
@@ -826,11 +863,28 @@
                 adminPanelEl.classList.remove('hidden');
 
                 // Aggiunge i listener per i pulsanti Admin (una sola volta)
-                updateCodeBtn?.addEventListener('click', handleAdminCodeUpdate);
-                toggleVotingBtn?.addEventListener('click', handleAdminToggle);
-                resetResultsBtn?.addEventListener('click', handleResetResults);
-                showDeliberationsBtn?.addEventListener('click', showDeliberationsLog);
-                resetProjectBtn?.addEventListener('click', handleResetProject);
+                // Usando replaceWith(cloneNode) per garantire che i listener siano freschi
+                 if (updateCodeBtn) {
+                     updateCodeBtn.replaceWith(updateCodeBtn.cloneNode(true));
+                     document.getElementById('update-code-btn').addEventListener('click', handleAdminCodeUpdate);
+                 }
+                 if (toggleVotingBtn) {
+                     toggleVotingBtn.replaceWith(toggleVotingBtn.cloneNode(true));
+                     document.getElementById('toggle-voting-btn').addEventListener('click', handleAdminToggle);
+                 }
+                  if (resetResultsBtn) {
+                     resetResultsBtn.replaceWith(resetResultsBtn.cloneNode(true));
+                     document.getElementById('reset-results-btn').addEventListener('click', handleResetResults);
+                 }
+                 if (showDeliberationsBtn) {
+                     showDeliberationsBtn.replaceWith(showDeliberationsBtn.cloneNode(true));
+                     document.getElementById('show-deliberations-btn').addEventListener('click', showDeliberationsLog);
+                 }
+                 if (resetProjectBtn) {
+                     resetProjectBtn.replaceWith(resetProjectBtn.cloneNode(true));
+                     document.getElementById('reset-project-btn').addEventListener('click', handleResetProject);
+                 }
+
 
             } else if (adminPanelEl) {
                 adminPanelEl.remove(); // Rimuove completamente il pannello se non admin
@@ -873,4 +927,3 @@
 </script>
 </body>
 </html>
-
